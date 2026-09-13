@@ -1,0 +1,8 @@
+{
+  "template_id": "branded_company_template.docx",
+  "prompt": "Create an executive technical report on AlphaGo breakthroughs with architecture diagrams",
+  "document_type": "docx",
+  "mode": "create_document",
+  "include_images": true,
+  "image_mode": "auto"
+}

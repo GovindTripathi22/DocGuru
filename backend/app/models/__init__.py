@@ -1,0 +1,51 @@
+from .template_spec import (
+    TemplateSpecification,
+    PageSpec,
+    FontSpec,
+    StyleSpec,
+    ParagraphRuleSpec,
+    TableRuleSpec,
+    HeaderFooterSpec,
+    BorderSpec,
+    LayoutSpec,
+    MasterSpec,
+    ThemeSpec,
+    LockStatus,
+)
+from .generation import (
+    GenerationRequest,
+    GenerationResponse,
+    DocumentPlan,
+    DocumentSection,
+    PresentationPlan,
+    SlidePlan,
+    ValidationReport,
+)
+from .tool_calls import (
+    ToolCall,
+    ToolCallResult,
+)
+
+__all__ = [
+    "TemplateSpecification",
+    "PageSpec",
+    "FontSpec",
+    "StyleSpec",
+    "ParagraphRuleSpec",
+    "TableRuleSpec",
+    "HeaderFooterSpec",
+    "BorderSpec",
+    "LayoutSpec",
+    "MasterSpec",
+    "ThemeSpec",
+    "LockStatus",
+    "GenerationRequest",
+    "GenerationResponse",
+    "DocumentPlan",
+    "DocumentSection",
+    "PresentationPlan",
+    "SlidePlan",
+    "ValidationReport",
+    "ToolCall",
+    "ToolCallResult",
+]
