@@ -173,10 +173,18 @@ class DocxEngine:
             # If no template table existed, create a standard table using default template style
             col_count = max(len(headers), max((len(r) for r in rows), default=1))
             table = doc.add_table(rows=len(rows) + (1 if headers else 0), cols=col_count)
-            # Find a valid table style from template
-            table_styles = [s for s in locked_doc.allowed_styles if "Table" in s or "Grid" in s]
-            if table_styles:
-                table.style = table_styles[0]
+            # Find a verified TABLE style (type 3) from template or document
+            try:
+                valid_table_style = locked_doc.get_valid_table_style()
+                if valid_table_style and valid_table_style in doc.styles:
+                    table.style = doc.styles[valid_table_style]
+                elif "Table Grid" in doc.styles:
+                    from docx.enum.style import WD_STYLE_TYPE
+                    s = doc.styles["Table Grid"]
+                    if s.type == WD_STYLE_TYPE.TABLE:
+                        table.style = s
+            except Exception:
+                pass
             
             # Fill headers
             current_row = 0

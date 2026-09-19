@@ -20,14 +20,17 @@ class LockedTemplate:
         self.allowed_heading_styles: Set[str] = set(spec.available_heading_styles or [])
         self.allowed_styles: Set[str] = set(spec.styles.keys() if spec.styles else [])
 
-        # Detect valid paragraph styles directly on the document object
+        # Detect valid paragraph and table styles directly on the document object
         self.valid_doc_paragraph_styles: Set[str] = set()
+        self.valid_doc_table_styles: Set[str] = set()
         if hasattr(docx_document, 'styles'):
             try:
                 from docx.enum.style import WD_STYLE_TYPE
                 for s in docx_document.styles:
                     if s.type == WD_STYLE_TYPE.PARAGRAPH:
                         self.valid_doc_paragraph_styles.add(s.name)
+                    elif s.type == WD_STYLE_TYPE.TABLE:
+                        self.valid_doc_table_styles.add(s.name)
             except Exception:
                 pass
 
@@ -42,6 +45,28 @@ class LockedTemplate:
             self.default_body_style = next(iter(self.valid_doc_paragraph_styles))
         else:
             self.default_body_style = "Normal"
+
+    def get_valid_table_style(self) -> Optional[str]:
+        """
+        Returns a verified TABLE style name (type 3) from the document styles, or None.
+        Guarantees that a paragraph style (type 1) is NEVER returned for table styling.
+        """
+        if self.spec and self.spec.table_rules:
+            for tr in self.spec.table_rules:
+                if tr.style_name and tr.style_name in self.valid_doc_table_styles:
+                    return tr.style_name
+
+        for s in self.valid_doc_table_styles:
+            if "grid" in s.lower():
+                return s
+        for s in self.valid_doc_table_styles:
+            if "table" in s.lower():
+                return s
+
+        if self.valid_doc_table_styles:
+            return next(iter(self.valid_doc_table_styles))
+
+        return None
 
     def validate_style_allowed(self, style_name: Optional[str]) -> Optional[str]:
         """
