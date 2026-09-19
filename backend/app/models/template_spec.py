@@ -187,5 +187,8 @@ class TemplateSpecification(BaseModel):
     available_heading_styles: List[str] = Field(default_factory=list)
     available_body_styles: List[str] = Field(default_factory=list)
     available_layout_names: List[str] = Field(default_factory=list)
+    extracted_rules: List[str] = Field(default_factory=list)
+    document_outline: List[str] = Field(default_factory=list)
+    document_text_summary: Optional[str] = None
     style_hash: str = ""
     lock_status: LockStatus = Field(default_factory=LockStatus)

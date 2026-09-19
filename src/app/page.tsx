@@ -157,6 +157,8 @@ export default function Home() {
                 documentType={templateData.document_type}
                 onGenerate={handlePromptSubmit}
                 isGenerating={isGenerating}
+                extractedRules={templateData.extracted_rules || templateData.template_spec?.extracted_rules}
+                documentOutline={templateData.document_outline || templateData.template_spec?.document_outline}
               />
             )}
           </div>

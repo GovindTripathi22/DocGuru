@@ -383,6 +383,10 @@ class DocxEngine:
         """
         doc = locked_doc.doc
 
+        # Check if plan is for big content edits / additions
+        if getattr(plan, "edit_mode", None) == "edit":
+            return self.apply_content_edits(locked_doc, plan, output_path)
+
         # Check if template is a structured multi-page/multi-section document template
         # (e.g. thesis, seminar report, proposal with cover page, certificate, front matter)
         is_structured_template = (len(doc.sections) > 1 or len(doc.paragraphs) > 20)
@@ -405,6 +409,113 @@ class DocxEngine:
             self.apply_theme_overrides(doc, plan.theme_overrides)
 
         # Save the result
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        doc.save(output_path)
+        return output_path
+
+    def apply_content_edits(
+        self,
+        locked_doc: LockedTemplate,
+        plan: DocumentPlan,
+        output_path: str
+    ) -> str:
+        """
+        Executes major content additions, chapter insertions, or section edits
+        on an existing document while preserving all front-matter, margins,
+        and OpenXML styles.
+        """
+        doc = locked_doc.doc
+        saved_table_xmls = []
+        body_elem = doc._body._body
+        for child in list(body_elem):
+            if child.tag.endswith('tbl'):
+                saved_table_xmls.append(copy.deepcopy(child))
+
+        for section in plan.sections:
+            action = getattr(section, "action", "append")
+            target = getattr(section, "target_heading", None)
+
+            if action == "append" or not target:
+                # Append a new major chapter to the document
+                doc.add_page_break()
+                self._render_section(locked_doc, section, saved_table_xmls)
+
+            elif action == "insert_after" and target:
+                target_clean = target.strip().lower()
+                target_p_idx = None
+                for i, p in enumerate(doc.paragraphs):
+                    if target_clean in p.text.strip().lower():
+                        target_p_idx = i
+                        break
+
+                if target_p_idx is not None and target_p_idx + 1 < len(doc.paragraphs):
+                    next_p = doc.paragraphs[target_p_idx + 1]
+                    next_p.insert_paragraph_before("")
+                    h_style = locked_doc.validate_style_allowed(section.heading_style)
+                    style_obj = None
+                    if h_style:
+                        try:
+                            style_obj = doc.styles[h_style]
+                        except Exception:
+                            for s in doc.styles:
+                                if s.name.lower() == h_style.lower():
+                                    style_obj = s
+                                    break
+                    if style_obj:
+                        next_p.insert_paragraph_before(section.title, style=style_obj)
+                    else:
+                        hp = next_p.insert_paragraph_before(section.title)
+                        hp.runs[0].bold = True
+
+                    for p_text in section.paragraphs:
+                        next_p.insert_paragraph_before(p_text)
+                    for b_text in section.bullets:
+                        next_p.insert_paragraph_before(f"•  {b_text}")
+                else:
+                    doc.add_page_break()
+                    self._render_section(locked_doc, section, saved_table_xmls)
+
+            elif action == "replace" and target:
+                target_clean = target.strip().lower()
+                target_p_idx = None
+                for i, p in enumerate(doc.paragraphs):
+                    if target_clean in p.text.strip().lower():
+                        target_p_idx = i
+                        break
+
+                if target_p_idx is not None:
+                    doc.paragraphs[target_p_idx].text = section.title
+                    end_idx = target_p_idx + 1
+                    while end_idx < len(doc.paragraphs):
+                        p = doc.paragraphs[end_idx]
+                        if p._p.xpath('w:pPr/w:sectPr') or ("heading" in (p.style.name or "").lower()):
+                            break
+                        end_idx += 1
+
+                    for p_to_remove in doc.paragraphs[target_p_idx + 1:end_idx]:
+                        try:
+                            body_elem.remove(p_to_remove._p)
+                        except ValueError:
+                            pass
+
+                    if end_idx < len(doc.paragraphs):
+                        next_p = doc.paragraphs[target_p_idx + 1]
+                        for p_text in section.paragraphs:
+                            next_p.insert_paragraph_before(p_text)
+                        for b_text in section.bullets:
+                            next_p.insert_paragraph_before(f"•  {b_text}")
+                    else:
+                        for p_text in section.paragraphs:
+                            doc.add_paragraph(p_text)
+                        for b_text in section.bullets:
+                            doc.add_paragraph(f"•  {b_text}")
+                else:
+                    doc.add_page_break()
+                    self._render_section(locked_doc, section, saved_table_xmls)
+
+        if plan.theme_overrides:
+            self.apply_theme_overrides(doc, plan.theme_overrides)
+
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         doc.save(output_path)
         return output_path

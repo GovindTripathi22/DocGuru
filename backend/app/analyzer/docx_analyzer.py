@@ -68,6 +68,9 @@ class DocxAnalyzer:
             table_rules=table_rules
         )
 
+        # 8. Extract Rules, Guidelines, and Outline from Document Content
+        extracted_rules, document_outline, doc_summary = self._extract_rules_and_outline(doc)
+
         return TemplateSpecification(
             filename=filename,
             document_type="docx",
@@ -83,9 +86,61 @@ class DocxAnalyzer:
             borders=borders,
             available_heading_styles=available_headings,
             available_body_styles=available_body,
+            extracted_rules=extracted_rules,
+            document_outline=document_outline,
+            document_text_summary=doc_summary,
             style_hash=style_hash,
             lock_status=LockStatus()
         )
+
+    def _extract_rules_and_outline(self, doc: Document):
+        """
+        Scans the document for internal formatting guidelines, submission rules,
+        style requirements, and existing chapter headings/outline.
+        """
+        rule_keywords = [
+            "STYLE:", "FONT", "SPACING:", "RULE", "NOTE:", "GUIDELINE", 
+            "INSTRUCTION", "FORMAT", "ALIGNMENT:", "CASE:", "CITATION", 
+            "MUST", "SHALL", "SHOULD", "TIPS:", "REQUIREMENT", "CRITERIA",
+            "SPECIFICATION", "FOR EXAMPLE:", "FIGURE NUMBERING:", "TABLE NUMBERING:",
+            "MARGIN", "MARGINS", "PAGE SETUP", "LINE SPACING", "PAPER SIZE",
+            "REFERENCES:", "BIBLIOGRAPHY", "TABLE:", "FIGURE:", "SUBMISSION",
+            "HEADER:", "FOOTER:", "PAGINATION", "INDENT"
+        ]
+        
+        extracted_rules: List[str] = []
+        document_outline: List[str] = []
+        outline_set: Set[str] = set()
+        seen_rules: Set[str] = set()
+        summary_paragraphs: List[str] = []
+
+        for p in doc.paragraphs:
+            text = p.text.strip()
+            if not text:
+                continue
+
+            # Detect headings / outline
+            style_name = (p.style.name if p.style else "").lower()
+            is_heading = "heading" in style_name or "title" in style_name
+            if (is_heading or (len(text) < 100 and any(text.upper().startswith(kw) for kw in ["CHAPTER", "SECTION", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."]))):
+                if text not in outline_set and len(text) < 120:
+                    outline_set.add(text)
+                    document_outline.append(text)
+
+            # Detect rule / guideline paragraphs
+            upper_text = text.upper()
+            has_rule_keyword = any(kw in upper_text for kw in rule_keywords)
+            if has_rule_keyword and len(text) > 8 and len(text) < 300:
+                clean_text = " ".join(text.split())
+                if clean_text not in seen_rules:
+                    seen_rules.add(clean_text)
+                    extracted_rules.append(clean_text)
+
+            if len(summary_paragraphs) < 15 and len(text) > 30 and not has_rule_keyword:
+                summary_paragraphs.append(text[:150])
+
+        doc_summary = " | ".join(summary_paragraphs[:8])
+        return extracted_rules, document_outline, doc_summary
 
     def _extract_page_spec(self, doc: Document) -> PageSpec:
         if not doc.sections:

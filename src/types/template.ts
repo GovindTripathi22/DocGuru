@@ -38,6 +38,8 @@ export interface TemplateSpec {
   fonts?: TemplateFonts;
   available_heading_styles?: string[];
   available_layout_names?: string[];
+  extracted_rules?: string[];
+  document_outline?: string[];
   style_hash: string;
   header?: HeaderFooterInfo;
   footer?: HeaderFooterInfo;
@@ -90,7 +92,9 @@ export interface TemplateUploadResponse {
   original_filename: string;
   document_type: "docx" | "pptx" | "pdf";
   template_spec: TemplateSpec;
-  status: string;
+  extracted_rules?: string[];
+  document_outline?: string[];
+  status?: string;
 }
 
 export interface GenerationResult {

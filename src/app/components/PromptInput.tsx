@@ -8,9 +8,17 @@ interface PromptInputProps {
   documentType: "docx" | "pptx" | "pdf";
   onGenerate: (data: PromptData) => void;
   isGenerating: boolean;
+  extractedRules?: string[];
+  documentOutline?: string[];
 }
 
-export function PromptInput({ documentType, onGenerate, isGenerating }: PromptInputProps) {
+export function PromptInput({
+  documentType,
+  onGenerate,
+  isGenerating,
+  extractedRules,
+  documentOutline,
+}: PromptInputProps) {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<string>(
     documentType === "pptx" ? "create_presentation" : "create_document"
@@ -27,6 +35,10 @@ export function PromptInput({ documentType, onGenerate, isGenerating }: PromptIn
     "Create a presentation on AI misinformation using this PPT's theme with visual figures.",
     "Build a 5-slide deck on quantum computing breakthroughs with market benchmarks and architecture diagrams.",
     "Generate an executive strategy presentation with comparison tables and slide visuals."
+  ] : mode.startsWith("edit") ? [
+    "Add a new chapter on Quantum Neural Networks with architecture breakdown and comparative performance table.",
+    "Insert an experimental evaluation section following the document's embedded formatting rules.",
+    "Expand the Methodology section with algorithmic complexity analysis and benchmark figures."
   ] : [
     "Create a comprehensive report on AlphaGo using this document's format with architecture figures.",
     "Generate a technical paper on distributed consensus algorithms with comparative benchmark tables.",
@@ -124,10 +136,56 @@ export function PromptInput({ documentType, onGenerate, isGenerating }: PromptIn
             }`}
           >
             <Sliders className="h-3.5 w-3.5" />
-            Surgical Edit
+            Surgical Edit / Add Chapter
           </button>
         </div>
       </div>
+
+      {/* Extracted Rules Enforced Banner */}
+      {extractedRules && extractedRules.length > 0 && (
+        <div className="mt-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 px-3.5 py-2.5 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-cyan-300 font-medium">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-[11px] text-cyan-400 font-bold">
+              {extractedRules.length}
+            </span>
+            <span>
+              <strong>Embedded Document Rules Active:</strong> AI generation is locked to follow all extracted formatting and submission guidelines.
+            </span>
+          </div>
+          <span className="shrink-0 text-[10px] text-cyan-400 bg-cyan-900/40 px-2 py-0.5 rounded border border-cyan-500/30 font-semibold uppercase tracking-wider">
+            Auto-Enforced
+          </span>
+        </div>
+      )}
+
+      {/* Target Landmark Quick-Selector for Surgical Edits */}
+      {mode.startsWith("edit") && documentOutline && documentOutline.length > 0 && (
+        <div className="mt-3.5 rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3 text-xs">
+          <div className="font-semibold text-indigo-300 mb-2 flex items-center gap-1.5">
+            <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+            <span>Target Existing Landmark / Chapter:</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+            <button
+              type="button"
+              onClick={() => setPrompt((prev) => prev ? `Append new chapter: ${prev}` : "Append new chapter on ")}
+              className="rounded-lg bg-indigo-600/30 border border-indigo-500/40 px-2.5 py-1 text-xs text-indigo-200 hover:bg-indigo-600/50 transition-all font-medium"
+            >
+              + Append New Chapter
+            </button>
+            {documentOutline.map((heading, hIdx) => (
+              <button
+                key={hIdx}
+                type="button"
+                onClick={() => setPrompt(`Insert after "${heading}": `)}
+                className="rounded-lg bg-zinc-900/80 border border-zinc-700/80 px-2.5 py-1 text-[11px] text-zinc-300 hover:border-indigo-400 hover:text-indigo-200 transition-all"
+              >
+                Insert after: {heading}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {enhanceError && (
         <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-2.5 text-xs text-amber-300 flex items-center justify-between">

@@ -40,6 +40,22 @@ class DocumentPlanner:
         available_headings = template_spec.available_heading_styles or []
         default_heading = available_headings[0] if available_headings else None
 
+        rules_context = ""
+        if template_spec.extracted_rules:
+            rules_context = (
+                "\nRULES & GUIDELINES EXTRACTED FROM TEMPLATE DOCUMENT:\n"
+                + "\n".join(f"- {r}" for r in template_spec.extracted_rules[:12])
+                + "\nCRITICAL INSTRUCTION: Strictly adhere to and incorporate these document rules in your planned sections, text formatting, and structure.\n"
+            )
+
+        outline_context = ""
+        if template_spec.document_outline:
+            outline_context = (
+                "\nEXISTING DOCUMENT OUTLINE / HEADINGS:\n"
+                + "\n".join(f"- {h}" for h in template_spec.document_outline[:15])
+                + "\n"
+            )
+
         system_prompt = f"""
 You are Gemma 4, an advanced reasoning and document planning AI.
 Your task is to plan the exact content structure for a professional document.
@@ -50,11 +66,12 @@ CRITICAL ARCHITECTURAL CONSTRAINTS:
    Available Heading Styles: {json.dumps(available_headings if available_headings else ["Default Heading"])}
 3. Write high quality, authoritative, factual, well-organized content matching the user request.
 4. If tabular data is relevant to the topic, structure it cleanly into headers and rows.
-
+{rules_context}{outline_context}
 Output MUST be a valid JSON object with the following schema:
 {{
   "title": "Document Title",
   "target_audience": "Audience Description",
+  "applied_rules": ["List of document rules applied"],
   "sections": [
     {{
       "title": "Section Title",
@@ -104,6 +121,8 @@ Custom Instructions: {custom_instructions or 'None'}
                     DocumentSection(
                         title=s.get("title", f"Section {i+1}"),
                         heading_style=s.get("heading_style") if (s.get("heading_style") in available_headings) else default_heading,
+                        action=s.get("action", "create"),
+                        target_heading=s.get("target_heading"),
                         paragraphs=s.get("paragraphs", []),
                         bullets=s.get("bullets", []),
                         table_data=t_data,
@@ -115,6 +134,7 @@ Custom Instructions: {custom_instructions or 'None'}
                 title=raw_json.get("title", "Document Report") if isinstance(raw_json, dict) else "Document Report",
                 target_audience=raw_json.get("target_audience", "General") if isinstance(raw_json, dict) else "General",
                 sections=parsed_sections,
+                applied_rules=raw_json.get("applied_rules", []) if isinstance(raw_json, dict) else [],
                 conclusion=raw_json.get("conclusion", "") if isinstance(raw_json, dict) else ""
             )
 
@@ -139,7 +159,7 @@ Custom Instructions: {custom_instructions or 'None'}
                 if sec.image_query:
                     should_add_image = True
                 elif "image" in user_prompt.lower() or "figure" in user_prompt.lower() or "diagram" in user_prompt.lower() or "picture" in user_prompt.lower() or "visual" in user_prompt.lower():
-                    if idx in (1, 2):  # Add visual figures to core analytical sections
+                    if idx in (1, 2):
                         should_add_image = True
                         sec.image_query = f"{plan.title} {sec.title}"
 
@@ -155,6 +175,113 @@ Custom Instructions: {custom_instructions or 'None'}
 
         # Apply Content Fitting Engine
         plan = ContentFitter.fit_document_plan(plan)
+        return plan
+
+    async def plan_document_edit(
+        self,
+        user_prompt: str,
+        template_spec: TemplateSpecification,
+        custom_instructions: Optional[str] = None,
+        include_images: bool = True,
+        image_mode: str = "auto"
+    ) -> DocumentPlan:
+        """
+        Plans a major content edit or addition to an existing document.
+        Produces sections with actions: 'append' (add new chapter at end),
+        'insert_after' (insert after specific heading), or 'replace' (replace existing chapter).
+        """
+        available_headings = template_spec.available_heading_styles or []
+        default_heading = available_headings[0] if available_headings else None
+        
+        outline_list = template_spec.document_outline or []
+        rules_list = template_spec.extracted_rules or []
+
+        system_prompt = f"""
+You are Gemma 4, an advanced reasoning and document planning AI.
+Your task is to plan a MAJOR CONTENT EDIT OR ADDITION to an existing document.
+
+EXISTING DOCUMENT OUTLINE / HEADINGS:
+{json.dumps(outline_list[:25], indent=2)}
+
+RULES & FORMAT CONSTRAINTS EXTRACTED FROM DOCUMENT:
+{json.dumps(rules_list[:15], indent=2)}
+
+Available Heading Styles: {json.dumps(available_headings if available_headings else ["Default Heading"])}
+
+CRITICAL EDIT PLANNING RULES:
+1. For each planned section, choose an action:
+   - "append": Add a new major chapter to the end of the document.
+   - "insert_after": Insert after an existing heading (specify target_heading from the outline).
+   - "replace": Replace the content of an existing section (specify target_heading).
+2. If the document has rules (e.g. format guidelines, citation formats, numbering), you MUST strictly apply them.
+3. Write high-quality, comprehensive paragraphs and tables for the requested edit.
+
+Output MUST be a valid JSON object with the following schema:
+{{
+  "title": "Document Title",
+  "edit_mode": "edit",
+  "applied_rules": ["Rule 1 applied", "Rule 2 applied"],
+  "sections": [
+    {{
+      "title": "New or Updated Chapter Title",
+      "action": "append",
+      "target_heading": null,
+      "heading_style": {json.dumps(default_heading) if default_heading else "null"},
+      "paragraphs": ["Detailed content paragraph 1", "Detailed content paragraph 2"],
+      "bullets": ["Point 1", "Point 2"],
+      "image_query": null,
+      "table_data": null
+    }}
+  ],
+  "conclusion": "Summary of additions/edits"
+}}
+"""
+        user_message = f"""
+Edit / Addition Request: {user_prompt}
+Custom Instructions: {custom_instructions or 'None'}
+"""
+        raw_json = await self.client.generate_structured_json(
+            system_prompt=system_prompt,
+            user_prompt=user_message,
+            max_tokens=1500
+        )
+
+        try:
+            plan = DocumentPlan.model_validate(raw_json)
+        except Exception:
+            raw_sections = raw_json.get("sections", []) if isinstance(raw_json, dict) else []
+            parsed_sections = []
+            for i, s in enumerate(raw_sections):
+                parsed_sections.append(
+                    DocumentSection(
+                        title=s.get("title", f"Added Section {i+1}"),
+                        heading_style=s.get("heading_style") if (s.get("heading_style") in available_headings) else default_heading,
+                        action=s.get("action", "append"),
+                        target_heading=s.get("target_heading"),
+                        paragraphs=s.get("paragraphs", []),
+                        bullets=s.get("bullets", [])
+                    )
+                )
+            plan = DocumentPlan(
+                title=raw_json.get("title", "Document Update") if isinstance(raw_json, dict) else "Document Update",
+                edit_mode="edit",
+                sections=parsed_sections,
+                applied_rules=raw_json.get("applied_rules", []) if isinstance(raw_json, dict) else []
+            )
+
+        # Image generation if requested
+        if include_images:
+            from .image_service import image_service
+            for sec in plan.sections:
+                if sec.image_query:
+                    try:
+                        sec.image_path = await image_service.fetch_or_generate_image(
+                            query_or_prompt=sec.image_query,
+                            mode=image_mode
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch image for edited section {sec.title}: {e}")
+
         return plan
 
     async def plan_presentation(

@@ -47,15 +47,28 @@ async def generate_document(req: GenerationRequest):
 
     try:
         if spec.document_type == "docx":
-            # 1. Plan content using Gemma 4 with locked styles
-            plan = await planner.plan_document(
-                user_prompt=req.prompt,
-                template_spec=spec,
-                target_pages=req.target_pages_or_slides,
-                custom_instructions=req.custom_instructions,
-                include_images=req.include_images,
-                image_mode=req.image_mode
+            # Check if user requested an edit/addition
+            is_edit_request = (
+                req.mode in ["edit_document", "edit_presentation"]
+                or any(kw in req.prompt.lower() for kw in ["add chapter", "add section", "edit section", "expand chapter", "expand section", "insert after", "append chapter"])
             )
+            if is_edit_request and (spec.document_outline or spec.total_pages_or_slides > 1):
+                plan = await planner.plan_document_edit(
+                    user_prompt=req.prompt,
+                    template_spec=spec,
+                    custom_instructions=req.custom_instructions,
+                    include_images=req.include_images,
+                    image_mode=req.image_mode
+                )
+            else:
+                plan = await planner.plan_document(
+                    user_prompt=req.prompt,
+                    template_spec=spec,
+                    target_pages=req.target_pages_or_slides,
+                    custom_instructions=req.custom_instructions,
+                    include_images=req.include_images,
+                    image_mode=req.image_mode
+                )
             # 2. Execute plan on locked template
             executor.execute_docx(
                 template_path=str(template_path),

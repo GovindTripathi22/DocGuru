@@ -11,6 +11,8 @@ class TableData(BaseModel):
 class DocumentSection(BaseModel):
     title: str
     heading_style: Optional[str] = None
+    action: Literal["create", "append", "insert_after", "replace"] = "create"
+    target_heading: Optional[str] = None
     paragraphs: List[str] = Field(default_factory=list)
     bullets: List[str] = Field(default_factory=list)
     table_data: Optional[TableData] = None
@@ -31,6 +33,8 @@ class DocumentPlan(BaseModel):
     sections: List[DocumentSection] = Field(default_factory=list)
     conclusion: Optional[str] = None
     applied_styles: List[str] = Field(default_factory=list)
+    applied_rules: List[str] = Field(default_factory=list)
+    edit_mode: Optional[str] = "create"
     theme_overrides: List[ThemeOverride] = Field(default_factory=list)
 
 class SlidePlan(BaseModel):

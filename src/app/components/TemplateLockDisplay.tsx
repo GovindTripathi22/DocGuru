@@ -105,6 +105,51 @@ export function TemplateLockDisplay({ spec }: TemplateLockDisplayProps) {
         </div>
       </div>
 
+      {/* Extracted Document Rules & Guidelines */}
+      {spec.extracted_rules && spec.extracted_rules.length > 0 && (
+        <details className="mt-4 rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3.5 text-xs text-cyan-200 group">
+          <summary className="font-bold flex items-center justify-between cursor-pointer list-none select-none text-cyan-300">
+            <span className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500/20 text-[11px] text-cyan-400 font-extrabold">
+                {spec.extracted_rules.length}
+              </span>
+              Embedded Document Rules & Formatting Guidelines Detected
+            </span>
+            <span className="text-[11px] text-cyan-400/80 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div className="mt-3 max-h-48 overflow-y-auto space-y-1.5 pr-2 pt-2 border-t border-cyan-500/20">
+            {spec.extracted_rules.map((rule, rIdx) => (
+              <div key={rIdx} className="flex items-start gap-2 text-[11px] text-zinc-300 bg-zinc-900/50 p-2 rounded-lg border border-zinc-800">
+                <span className="text-cyan-400 font-bold">•</span>
+                <span>{rule}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Existing Document Outline */}
+      {spec.document_outline && spec.document_outline.length > 0 && (
+        <details className="mt-3 rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 text-xs text-indigo-200 group">
+          <summary className="font-bold flex items-center justify-between cursor-pointer list-none select-none text-indigo-300">
+            <span className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] text-indigo-400 font-extrabold">
+                {spec.document_outline.length}
+              </span>
+              Existing Document Chapters & Landmarks
+            </span>
+            <span className="text-[11px] text-indigo-400/80 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div className="mt-3 max-h-40 overflow-y-auto flex flex-wrap gap-1.5 pt-2 border-t border-indigo-500/20">
+            {spec.document_outline.map((heading, hIdx) => (
+              <span key={hIdx} className="text-[11px] bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-1 rounded-md">
+                {heading}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
+
       {isPdf && (
         <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-300">
           <strong>Visual Reference Notice:</strong> This PDF was parsed for visual reference and layout reconstruction. For guaranteed 100% byte-for-byte editable template inheritance, providing the original DOCX or PPTX is strongly recommended.

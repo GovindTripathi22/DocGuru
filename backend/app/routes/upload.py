@@ -45,6 +45,8 @@ async def upload_template(file: UploadFile = File(...)):
             "template_id": safe_filename,
             "original_filename": file.filename,
             "document_type": spec.document_type,
+            "extracted_rules": spec.extracted_rules,
+            "document_outline": spec.document_outline,
             "template_spec": spec
         }
     except Exception as e:
