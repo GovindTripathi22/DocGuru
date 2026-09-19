@@ -69,18 +69,37 @@ class DocxEngine:
         
         # 1. Try adding paragraph with validated heading style
         if validated_style:
+            style_obj = None
             try:
-                if validated_style in doc.styles:
-                    p = doc.add_paragraph(text, style=validated_style)
-                    return p
+                style_obj = doc.styles[validated_style]
             except Exception:
-                pass
+                clean_id = validated_style.replace(" ", "")
+                for s in doc.styles:
+                    if s.name.lower() == validated_style.lower() or (hasattr(s, 'style_id') and s.style_id.lower() == clean_id.lower()):
+                        style_obj = s
+                        break
+            if style_obj is not None:
+                try:
+                    p = doc.add_paragraph(text, style=style_obj)
+                    return p
+                except Exception:
+                    pass
 
         # 2. Fallback: use default body style (or no explicit style) and bold the text
         try:
             default_style = locked_doc.default_body_style
-            if default_style and default_style in doc.styles:
-                p = doc.add_paragraph(style=default_style)
+            style_obj = None
+            if default_style:
+                try:
+                    style_obj = doc.styles[default_style]
+                except Exception:
+                    clean_id = default_style.replace(" ", "")
+                    for s in doc.styles:
+                        if s.name.lower() == default_style.lower() or (hasattr(s, 'style_id') and s.style_id.lower() == clean_id.lower()):
+                            style_obj = s
+                            break
+            if style_obj is not None:
+                p = doc.add_paragraph(style=style_obj)
             else:
                 p = doc.add_paragraph()
             run = p.add_run(text)
@@ -104,12 +123,21 @@ class DocxEngine:
         
         doc = locked_doc.doc
         if style:
+            style_obj = None
             try:
-                if style in doc.styles:
-                    p = doc.add_paragraph(text, style=style)
-                    return p
+                style_obj = doc.styles[style]
             except Exception:
-                pass
+                clean_id = style.replace(" ", "")
+                for s in doc.styles:
+                    if s.name.lower() == style.lower() or (hasattr(s, 'style_id') and s.style_id.lower() == clean_id.lower()):
+                        style_obj = s
+                        break
+            if style_obj is not None:
+                try:
+                    p = doc.add_paragraph(text, style=style_obj)
+                    return p
+                except Exception:
+                    pass
 
         p = doc.add_paragraph(text)
         return p
@@ -355,12 +383,22 @@ class DocxEngine:
         """
         doc = locked_doc.doc
 
-        # Clear existing body paragraphs/tables, but save template table structures
-        saved_table_xmls = self.clear_body_content_preserving_structure(doc)
+        # Check if template is a structured multi-page/multi-section document template
+        # (e.g. thesis, seminar report, proposal with cover page, certificate, front matter)
+        is_structured_template = (len(doc.sections) > 1 or len(doc.paragraphs) > 20)
 
-        # Process each section in the plan
-        for section in plan.sections:
-            self._render_section(locked_doc, section, saved_table_xmls)
+        if is_structured_template:
+            self._inhabit_structured_template(locked_doc, plan)
+        else:
+            # Clear existing sample body paragraphs/tables, but save template table structures
+            saved_table_xmls = self.clear_body_content_preserving_structure(doc)
+
+            # Process each section in the plan
+            for idx, section in enumerate(plan.sections):
+                self._render_section(locked_doc, section, saved_table_xmls)
+                # If multi-section document, paginate nicely
+                if idx < len(plan.sections) - 1 and len(plan.sections) > 2:
+                    doc.add_page_break()
 
         # If user explicitly requested theme overrides (e.g., change blue border to yellow)
         if plan.theme_overrides:
@@ -370,6 +408,122 @@ class DocxEngine:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         doc.save(output_path)
         return output_path
+
+    def _inhabit_structured_template(self, locked_doc: LockedTemplate, plan: DocumentPlan) -> None:
+        """
+        Inhabits a pre-structured, multi-section template (e.g. thesis, seminar report, corporate format)
+        without destroying front-matter sections (Cover page, Certificate, Acknowledgement, Abstract, TOC),
+        while populating the main content chapters with the generated plan.
+        """
+        doc = locked_doc.doc
+        title = plan.title or "Research Report"
+
+        # 1. Identify where body chapters begin (e.g. "INTRODUCTION", "CHAPTER 1", or after front matter)
+        chapter_keywords = [
+            "INTRODUCTION", "CHAPTER 1", "CHAPTER - 1", "CHAPTER I", 
+            "1. INTRODUCTION", "1.0 INTRODUCTION", "1. BACKGROUND"
+        ]
+        body_start_idx = None
+        for i, p in enumerate(doc.paragraphs):
+            p_text = p.text.strip().upper()
+            if any(p_text == kw or p_text.startswith(kw + " ") or p_text.startswith(kw + ":") for kw in chapter_keywords):
+                body_start_idx = i
+                break
+
+        # If no explicit chapter keyword was found, see if we can find where front matter ends
+        if body_start_idx is None:
+            for i, p in enumerate(doc.paragraphs):
+                p_text = p.text.strip().upper()
+                if "TABLE OF CONTENT" in p_text or "ABSTRACT" in p_text:
+                    for j in range(i + 1, min(i + 40, len(doc.paragraphs))):
+                        if doc.paragraphs[j]._p.xpath('w:pPr/w:sectPr'):
+                            body_start_idx = j + 1
+                            break
+                    if body_start_idx is not None:
+                        break
+
+        # If still None, default to paragraph 0
+        if body_start_idx is None:
+            body_start_idx = 0
+
+        # 2. In front matter (paragraphs 0 to body_start_idx - 1):
+        # Replace title placeholders across all paragraphs and tables in front matter
+        title_placeholders = [
+            "T i t l e", "Title of Seminar/Project.", "Title of Seminar/Project",
+            "[Seminar Topic]", "[Title]", "<Title>", "Document Title", "Project Title",
+            "Seminar Report On", "Report On"
+        ]
+        front_matter_paras = doc.paragraphs[:body_start_idx]
+        for p in front_matter_paras:
+            for ph in title_placeholders:
+                if ph in p.text:
+                    p.text = p.text.replace(ph, title)
+            if p.text.strip() == "Title" or p.text.strip() == "T i t l e":
+                p.text = title
+
+        # Also search in any front matter tables
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        for ph in title_placeholders:
+                            if ph in p.text:
+                                p.text = p.text.replace(ph, title)
+                        if p.text.strip() == "Title" or p.text.strip() == "T i t l e":
+                            p.text = title
+
+        # 3. Update Abstract if an Abstract heading is present in front matter
+        abstract_idx = None
+        for i, p in enumerate(front_matter_paras):
+            if p.text.strip().upper() == "ABSTRACT":
+                abstract_idx = i
+                break
+        
+        if abstract_idx is not None:
+            abstract_end_idx = body_start_idx
+            for j in range(abstract_idx + 1, body_start_idx):
+                if doc.paragraphs[j]._p.xpath('w:pPr/w:sectPr') or any(kw in doc.paragraphs[j].text.upper() for kw in ["TABLE OF CONTENT", "CONTENTS", "ACKNOWLEDGEMENT"]):
+                    abstract_end_idx = j
+                    break
+
+            abstract_text = plan.conclusion or (plan.sections[0].paragraphs[0] if plan.sections and plan.sections[0].paragraphs else f"This report provides an in-depth analysis of {title}.")
+            for k in range(abstract_idx + 1, abstract_end_idx):
+                p = doc.paragraphs[k]
+                if p.text.strip().lower().startswith("abstract -") or "context/relevance" in p.text.lower():
+                    p.text = abstract_text
+                elif any(gw in p.text.lower() for gw in ["font style:", "spacing:", "font size:", "style: times", "case: lower", "case: upper", "re & after"]):
+                    p.text = ""
+
+        # 4. Populate main body chapters (from body_start_idx onwards)
+        # Save any table XMLs in the body for cloning
+        saved_table_xmls = []
+        body_elem = doc._body._body
+        for child in list(body_elem):
+            if child.tag.endswith('tbl'):
+                saved_table_xmls.append(copy.deepcopy(child))
+
+        # Remove placeholder body paragraphs from body_start_idx onwards
+        paras_to_remove = [p._p for p in doc.paragraphs[body_start_idx:]]
+        for p_elem in paras_to_remove:
+            try:
+                body_elem.remove(p_elem)
+            except ValueError:
+                pass
+
+        # Also remove tables that were in the body
+        for child in list(body_elem):
+            if child.tag.endswith('tbl'):
+                try:
+                    body_elem.remove(child)
+                except ValueError:
+                    pass
+
+        # 5. Render new planned chapters, tables, and sections
+        for idx, section in enumerate(plan.sections):
+            self._render_section(locked_doc, section, saved_table_xmls)
+            # Add page break between major chapters
+            if idx < len(plan.sections) - 1:
+                doc.add_page_break()
 
     def apply_theme_overrides(self, doc: Document, overrides: List[Any]) -> int:
         """

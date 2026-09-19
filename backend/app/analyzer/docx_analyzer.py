@@ -177,11 +177,18 @@ class DocxAnalyzer:
         # collection before using them. DO NOT fabricate styles that don't exist.
         validated_headings = []
         for hs in heading_styles:
+            exists = False
             try:
                 doc.styles[hs]
+                exists = True
+            except (KeyError, UserWarning):
+                clean_id = hs.replace(" ", "")
+                for s in doc.styles:
+                    if s.name.lower() == hs.lower() or (hasattr(s, 'style_id') and s.style_id.lower() == clean_id.lower()):
+                        exists = True
+                        break
+            if exists:
                 validated_headings.append(hs)
-            except KeyError:
-                pass
         heading_styles = validated_headings
 
         # If no heading paragraph styles were found, leave the list empty.
