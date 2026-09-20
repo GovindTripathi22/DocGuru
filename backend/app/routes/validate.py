@@ -9,6 +9,8 @@ from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..validation.diff_validator import DiffValidator
 from ..errors import AppError
 
+from ..security import get_safe_path
+
 router = APIRouter(prefix="/api", tags=["validate"])
 analyzer = TemplateAnalyzer()
 validator = DiffValidator()
@@ -23,8 +25,8 @@ async def validate_document(req: ValidateRequest):
     """
     Compares the original template against the generated file to verify zero format drift.
     """
-    template_path = settings.UPLOAD_DIR / req.template_id
-    generated_path = settings.OUTPUT_DIR / req.generated_filename
+    template_path = get_safe_path(settings.UPLOAD_DIR, req.template_id, "Template")
+    generated_path = get_safe_path(settings.OUTPUT_DIR, req.generated_filename, "Generated file")
 
     if not template_path.exists():
         raise HTTPException(status_code=404, detail="Template file not found")

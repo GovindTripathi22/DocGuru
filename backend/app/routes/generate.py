@@ -10,7 +10,9 @@ from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..ai.planner import DocumentPlanner
 from ..ai.executor import DocumentExecutor
 from ..validation.diff_validator import DiffValidator
-from ..errors import AppError
+from ..errors import AppError, TemplateNotFound, LLMNotConfigured
+
+from ..security import get_safe_path
 
 router = APIRouter(prefix="/api", tags=["generate"])
 logger = logging.getLogger(__name__)
@@ -30,17 +32,20 @@ async def generate_document(req: GenerationRequest):
     4. Validates structural and format integrity
     5. Returns result and download link
     """
+    if settings.mode == "misconfigured":
+        raise LLMNotConfigured()
+
     start_time = time.time()
-    template_path = settings.UPLOAD_DIR / req.template_id
+    template_path = get_safe_path(settings.UPLOAD_DIR, req.template_id, "Template")
 
     if not template_path.exists():
-        raise HTTPException(status_code=404, detail=f"Template file '{req.template_id}' not found.")
+        raise TemplateNotFound(req.template_id)
 
     try:
         spec = analyzer.analyze(str(template_path))
     except Exception as e:
         logger.error(f"Failed to analyze template {req.template_id}: {e}")
-        raise HTTPException(status_code=422, detail=f"Template analysis failed: {str(e)}")
+        raise AppError(code="TEMPLATE_ANALYSIS_FAILED", http_status=422, message="Template analysis failed.")
 
     output_ext = template_path.suffix.lower()
     output_filename = f"generated_{uuid.uuid4().hex[:8]}{output_ext}"
@@ -132,14 +137,15 @@ async def generate_document(req: GenerationRequest):
                 issues=[]
             )
 
-        # 4. If drift detected, attempt automatic rollback and re-execution (§18)
+        # 4. Strict Zero Drift Enforcement: reject drifted documents with 422 TEMPLATE_DRIFT_DETECTED
         if not val_report.passed and spec.document_type in ("docx", "pptx"):
-            logger.warning("Formatting drift detected during validation. Triggering automatic rollback...")
-            if spec.document_type == "docx":
-                executor.execute_docx(str(template_path), spec, plan, str(output_path))
-            elif spec.document_type == "pptx":
-                executor.execute_pptx(str(template_path), spec, plan, str(output_path))
-            val_report = validator.validate(spec, str(output_path))
+            logger.error("Template formatting drift detected: %s", val_report.issues)
+            raise AppError(
+                code="TEMPLATE_DRIFT_DETECTED",
+                http_status=422,
+                message="Generated document failed zero-drift template verification.",
+                details={"issues": val_report.issues, "differences": val_report.differences},
+            )
 
         elapsed = round(time.time() - start_time, 2)
 

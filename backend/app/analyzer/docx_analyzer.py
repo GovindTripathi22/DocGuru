@@ -1,6 +1,7 @@
 from typing import Dict, List, Any, Optional, Set
 import hashlib
 import json
+import re
 from pathlib import Path
 import docx
 from docx import Document
@@ -96,18 +97,11 @@ class DocxAnalyzer:
     def _extract_rules_and_outline(self, doc: Document):
         """
         Scans the document for internal formatting guidelines, submission rules,
-        style requirements, and existing chapter headings/outline.
+        style requirements, and existing chapter headings/outline using anchored regex.
         """
-        rule_keywords = [
-            "STYLE:", "FONT", "SPACING:", "RULE", "NOTE:", "GUIDELINE", 
-            "INSTRUCTION", "FORMAT", "ALIGNMENT:", "CASE:", "CITATION", 
-            "MUST", "SHALL", "SHOULD", "TIPS:", "REQUIREMENT", "CRITERIA",
-            "SPECIFICATION", "FOR EXAMPLE:", "FIGURE NUMBERING:", "TABLE NUMBERING:",
-            "MARGIN", "MARGINS", "PAGE SETUP", "LINE SPACING", "PAPER SIZE",
-            "REFERENCES:", "BIBLIOGRAPHY", "TABLE:", "FIGURE:", "SUBMISSION",
-            "HEADER:", "FOOTER:", "PAGINATION", "INDENT"
-        ]
-        
+        rule_anchor_re = re.compile(r"^\s*(rule|note|guideline|requirement|instruction|format|font|margin|spacing|style)s?(\s+\w+)?\s*[:\-–]", re.IGNORECASE)
+        must_format_re = re.compile(r"\b(must|shall)\b.*\b(format|font|margin|spacing|size|heading|style|table|figure|page|color|border|citation|ieee)\b", re.IGNORECASE)
+
         extracted_rules: List[str] = []
         document_outline: List[str] = []
         outline_set: Set[str] = set()
@@ -122,21 +116,20 @@ class DocxAnalyzer:
             # Detect headings / outline
             style_name = (p.style.name if p.style else "").lower()
             is_heading = "heading" in style_name or "title" in style_name
-            if (is_heading or (len(text) < 100 and any(text.upper().startswith(kw) for kw in ["CHAPTER", "SECTION", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."]))):
+            if is_heading or (len(text) < 100 and any(text.upper().startswith(kw) for kw in ["CHAPTER", "SECTION", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."])):
                 if text not in outline_set and len(text) < 120:
                     outline_set.add(text)
                     document_outline.append(text)
 
-            # Detect rule / guideline paragraphs
-            upper_text = text.upper()
-            has_rule_keyword = any(kw in upper_text for kw in rule_keywords)
-            if has_rule_keyword and len(text) > 8 and len(text) < 300:
+            # Detect rule / guideline paragraphs via line-anchored whole-word patterns
+            is_rule = bool(rule_anchor_re.search(text) or must_format_re.search(text))
+            if is_rule and 8 < len(text) <= 300 and len(extracted_rules) < 12:
                 clean_text = " ".join(text.split())
                 if clean_text not in seen_rules:
                     seen_rules.add(clean_text)
                     extracted_rules.append(clean_text)
 
-            if len(summary_paragraphs) < 15 and len(text) > 30 and not has_rule_keyword:
+            if len(summary_paragraphs) < 15 and len(text) > 30 and not is_rule:
                 summary_paragraphs.append(text[:150])
 
         doc_summary = " | ".join(summary_paragraphs[:8])
@@ -382,9 +375,9 @@ class DocxAnalyzer:
         hash_payload = {
             "page": page_spec.model_dump(),
             "fonts": font_spec.model_dump(),
-            "style_names": sorted(list(styles.keys())),
+            "styles": {k: v.model_dump() for k, v in sorted(styles.items())},
             "header_distance": header.distance_pt,
-            "footer_distance": footer.distance_pt
+            "footer_distance": footer.distance_pt,
         }
         raw_json = json.dumps(hash_payload, sort_keys=True)
-        return hashlib.sha256(raw_json.encode('utf-8')).hexdigest()[:16]
+        return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()[:16]

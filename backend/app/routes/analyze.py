@@ -7,6 +7,7 @@ from ..config import settings
 from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..models.template_spec import TemplateSpecification
 from ..errors import AppError, TemplateNotFound
+from ..security import get_safe_path
 
 router = APIRouter(prefix="/api", tags=["analyze"])
 analyzer = TemplateAnalyzer()
@@ -20,9 +21,9 @@ async def analyze_template(req: AnalyzeRequest):
     """
     Re-analyzes an existing uploaded template.
     """
-    file_path = settings.UPLOAD_DIR / req.template_id
+    file_path = get_safe_path(settings.UPLOAD_DIR, req.template_id, "Template")
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise TemplateNotFound(req.template_id)
 
     try:
         spec = analyzer.analyze(str(file_path))

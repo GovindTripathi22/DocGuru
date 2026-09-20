@@ -18,7 +18,30 @@ from .routes.generate import router as generate_router
 from .routes.upload import router as upload_router
 from .routes.validate import router as validate_router
 
-logging.basicConfig(level=logging.DEBUG if settings.DEBUG else logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+import json
+import sys
+
+class JSONLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "name": record.name,
+            "message": record.getMessage(),
+        }
+        for attr in ("request_id", "job_id", "method", "path", "status", "duration_ms"):
+            if hasattr(record, attr):
+                log_entry[attr] = getattr(record, attr)
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry)
+
+
+log_handler = logging.StreamHandler(sys.stdout)
+log_handler.setFormatter(JSONLogFormatter())
+root_logger = logging.getLogger()
+root_logger.handlers = [log_handler]
+root_logger.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
 logger = logging.getLogger("backend")
 
 
@@ -61,10 +84,19 @@ async def request_context(request: Request, call_next):
     except AppError as error:
         response = make_error_response(error.code, error.message, request_id, error.http_status, error.details)
     except Exception:
-        logger.exception("unhandled request failure request_id=%s", request_id)
+        logger.exception("unhandled request failure", extra={"request_id": request_id})
         response = make_error_response("INTERNAL_ERROR", "The request could not be completed.", request_id, 500)
     response.headers["X-Request-ID"] = request_id
-    logger.info("request_id=%s method=%s path=%s status=%s ms=%.1f", request_id, request.method, request.url.path, response.status_code, (time.perf_counter() - started) * 1000)
+    logger.info(
+        "request completed",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+        },
+    )
     return response
 
 
