@@ -21,6 +21,7 @@ services:
       - OUTLINE_MAX_TOKENS=${OUTLINE_MAX_TOKENS:-1200}
       - SECTION_MAX_TOKENS=${SECTION_MAX_TOKENS:-1800}
       - DEBUG=${DEBUG:-false}
+      - LOG_CONTENT=${LOG_CONTENT:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - API_KEYS=${API_KEYS:-}
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-25}

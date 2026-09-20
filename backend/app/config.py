@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "DocGuru"
     DEBUG: bool = False
+    LOG_CONTENT: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = Field(default=8000, ge=1, le=65535)
     MODEL_PROVIDER: Literal["google_ai", "ollama", "openai_compat", "demo"] = "google_ai"

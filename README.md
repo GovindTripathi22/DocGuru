@@ -33,6 +33,7 @@ The table below lists all supported configuration variables. All names and defau
 | `OUTLINE_MAX_TOKENS` | `1200` | Token limit for document outline generation. |
 | `SECTION_MAX_TOKENS` | `1800` | Token limit for per-section generation. |
 | `DEBUG` | `false` | Enable verbose debug logging. |
+| `LOG_CONTENT` | `false` | Enable logging of prompt and document content (disabled by default for privacy). |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Allowed CORS origins (wildcard `*` rejected). |
 | `API_KEYS` | `""` | Comma-separated list of valid backend API keys. |
 | `MAX_UPLOAD_MB` | `25` | Maximum upload size in megabytes. |
