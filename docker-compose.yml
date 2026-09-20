@@ -46,6 +46,8 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
   frontend:
     build:
@@ -61,6 +63,8 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
   ollama:
     image: ollama/ollama:latest

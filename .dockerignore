@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env*
+backend/data
+backend/uploads
+backend/outputs
+backend/temp
+__pycache__
+*.pyc
+*.pyo
+docs
+scripts
+tests
+backend/tests
+.pytest_cache

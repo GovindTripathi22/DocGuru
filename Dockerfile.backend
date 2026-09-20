@@ -2,11 +2,28 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    tini \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -u 10001 -m -s /bin/bash docguru
+
 COPY backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ backend/
 
+RUN mkdir -p /app/backend/data /app/backend/uploads /app/backend/outputs /app/backend/temp && \
+    chown -R docguru:docguru /app/backend
+
+USER docguru
+
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health/live || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
