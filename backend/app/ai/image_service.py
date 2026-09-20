@@ -1,3 +1,4 @@
+import hashlib
 import os
 import io
 import logging
@@ -30,8 +31,9 @@ class ImageService:
         Fetches a real image from public repositories or generates an AI/programmatic visual.
         Returns the absolute local path to the saved image file.
         """
+        query_hash = hashlib.sha256(query_or_prompt.encode("utf-8")).hexdigest()[:16]
         safe_name = "".join(c if c.isalnum() else "_" for c in query_or_prompt[:30]).strip("_") or "visual_asset"
-        cached_path = self.cache_dir / f"{safe_name}_{width}x{height}.jpg"
+        cached_path = self.cache_dir / f"{safe_name}_{query_hash}_{width}x{height}.jpg"
 
         if cached_path.exists():
             return str(cached_path)
