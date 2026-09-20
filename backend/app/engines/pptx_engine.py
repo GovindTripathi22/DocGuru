@@ -84,7 +84,7 @@ class PptxEngine:
         if subtitle_placeholder and subtitle:
             subtitle_placeholder.text = subtitle
 
-        # 3. Populate Content / Body Placeholder
+        # 3. Populate Content / Body Placeholder (or fallback if layout lacks body)
         body_placeholder = None
         for shape in slide.placeholders:
             if shape.placeholder_format.type in (PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT):
@@ -92,8 +92,12 @@ class PptxEngine:
                     body_placeholder = shape
                     break
 
-        if body_placeholder:
-            tf = body_placeholder.text_frame
+        content_target = body_placeholder
+        if content_target is None and subtitle_placeholder and not subtitle:
+            content_target = subtitle_placeholder
+
+        if content_target:
+            tf = content_target.text_frame
             tf.word_wrap = True
 
             # If bullet points provided
@@ -116,6 +120,23 @@ class PptxEngine:
                     else:
                         p = tf.add_paragraph()
                     p.text = para
+        elif bullet_points or body_paragraphs:
+            # Fallback to dynamic textbox shape so content is never silently lost (PPTX-02)
+            import pptx.util
+            slide_w = prs.slide_width.inches if hasattr(prs.slide_width, "inches") else 13.333
+            slide_h = prs.slide_height.inches if hasattr(prs.slide_height, "inches") else 7.5
+            tb = slide.shapes.add_textbox(
+                pptx.util.Inches(slide_w * 0.1),
+                pptx.util.Inches(slide_h * 0.4),
+                pptx.util.Inches(slide_w * 0.8),
+                pptx.util.Inches(slide_h * 0.5),
+            )
+            tf = tb.text_frame
+            tf.word_wrap = True
+            items = bullet_points or body_paragraphs or []
+            for idx, item in enumerate(items):
+                p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
+                p.text = item
 
         # 4. If image provided, insert image shape or picture placeholder
         if image_path and Path(image_path).exists():
