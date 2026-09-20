@@ -77,3 +77,11 @@ docker compose up -d --build
 # With local Ollama profile
 docker compose --profile ollama up -d --build
 ```
+
+## Documentation
+
+- [Template Validation & Invariant Guarantees](docs/VALIDATION.md)
+- [Privacy & Security Architecture](docs/PRIVACY.md)
+- [Manual QA Verification Guide](docs/MANUAL_QA.md)
+- [Architectural Decisions](docs/DECISIONS.md)
+- [Remediation Fix Report](docs/FIX_REPORT.md)
