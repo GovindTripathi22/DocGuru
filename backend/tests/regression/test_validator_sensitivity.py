@@ -6,7 +6,6 @@ from backend.app.analyzer.template_analyzer import TemplateAnalyzer
 from backend.app.validation.diff_validator import DiffValidator
 
 
-@pytest.mark.xfail(strict=True, reason="VAL-01: style-only mutations can be reported as a passing validation")
 def test_heading_style_mutation_fails_validation(minimal_docx, tmp_path):
     original = TemplateAnalyzer().analyze(str(minimal_docx))
     mutated = tmp_path / "mutated.docx"

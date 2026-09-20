@@ -28,13 +28,19 @@ class DiffValidator:
         """
         gen_spec = self.analyzer.analyze(generated_file_path)
 
+        hash_match = (original_spec.style_hash == gen_spec.style_hash)
         report = ValidationReport(
             original_style_hash=original_spec.style_hash,
             generated_style_hash=gen_spec.style_hash,
-            hash_match=(original_spec.style_hash == gen_spec.style_hash),
-            passed=True,
+            hash_match=hash_match,
+            passed=hash_match,
             issues=[]
         )
+        if not hash_match:
+            report.font_drift_detected = True
+            report.issues.append(
+                f"Style hash mismatch: original='{original_spec.style_hash}' != generated='{gen_spec.style_hash}'"
+            )
 
         differences = {}
 
