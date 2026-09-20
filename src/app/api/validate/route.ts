@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+import { backendFetch } from "@/lib/backend";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    const res = await fetch(`${BACKEND_URL}/api/validate`, {
+    const res = await backendFetch("/api/validate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

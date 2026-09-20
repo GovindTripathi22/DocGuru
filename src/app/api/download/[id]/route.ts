@@ -1,41 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+import { backendFetch } from "@/lib/backend";
 
 export async function GET(
   req: NextRequest,
-  context?: { params?: Promise<{ id: string }> | { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
-    let id = "";
-    if (context && context.params) {
-      const resolvedParams = await Promise.resolve(context.params);
-      id = resolvedParams?.id || "";
-    }
-    if (!id) {
-      const pathParts = req.nextUrl.pathname.split("/");
-      id = pathParts[pathParts.length - 1] || "";
-    }
+    const { id } = await props.params;
 
     if (!id) {
       return NextResponse.json({ error: "Missing filename parameter" }, { status: 400 });
     }
 
-    const res = await fetch(`${BACKEND_URL}/api/download/${encodeURIComponent(id)}`);
+    const res = await backendFetch(`/api/download/${encodeURIComponent(id)}`);
 
     if (!res.ok) {
-      return NextResponse.json({ error: "File not found in backend" }, { status: res.status });
+      const err = await res.json().catch(() => ({ detail: "File not found" }));
+      return NextResponse.json({ error: err.detail || "File not found" }, { status: res.status });
     }
 
-    const blob = await res.blob();
     const contentType = res.headers.get("Content-Type") || "application/octet-stream";
     const contentDisposition = res.headers.get("Content-Disposition") || `attachment; filename="${id}"`;
 
-    return new NextResponse(blob, {
+    return new Response(res.body, {
       status: 200,
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": contentDisposition,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error: unknown) {

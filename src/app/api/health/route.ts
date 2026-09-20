@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+import { backendFetch } from "@/lib/backend";
 
 export async function GET() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/health`, {
+    const res = await backendFetch("/api/health", {
       headers: { "Content-Type": "application/json" },
-      cache: "no-store",
     });
 
     if (!res.ok) {

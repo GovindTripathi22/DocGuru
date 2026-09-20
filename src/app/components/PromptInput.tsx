@@ -32,17 +32,17 @@ export function PromptInput({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const samplePrompts = documentType === "pptx" ? [
-    "Create a presentation on AI misinformation using this PPT's theme with visual figures.",
-    "Build a 5-slide deck on quantum computing breakthroughs with market benchmarks and architecture diagrams.",
+    "Create a presentation on digital trust architecture using this presentation's layout styles.",
+    "Build a 5-slide deck on quantum computing developments with market benchmarks and architecture diagrams.",
     "Generate an executive strategy presentation with comparison tables and slide visuals."
   ] : mode.startsWith("edit") ? [
-    "Add a new chapter on Quantum Neural Networks with architecture breakdown and comparative performance table.",
+    "Add a new chapter on distributed systems with architectural breakdown and comparative performance table.",
     "Insert an experimental evaluation section following the document's embedded formatting rules.",
     "Expand the Methodology section with algorithmic complexity analysis and benchmark figures."
   ] : [
-    "Create a comprehensive report on AlphaGo using this document's format with architecture figures.",
+    "Create a comprehensive report on renewable energy grid integration using this document's format.",
     "Generate a technical paper on distributed consensus algorithms with comparative benchmark tables.",
-    "Write an executive briefing on AI safety guidelines and change the blue border to yellow."
+    "Write an executive briefing on software supply chain security standards."
   ];
 
   const handleEnhancePrompt = async () => {
@@ -203,8 +203,8 @@ export function PromptInput({
           onKeyDown={handleKeyDown}
           placeholder={
             documentType === "pptx"
-              ? "e.g., 'Create a presentation on AI misinformation using this PPT's theme with diagrams.' (Press Ctrl+Enter to generate)"
-              : "e.g., 'Create a comprehensive report on AlphaGo with benchmark tables, diagrams, and keep the exact corporate theme.' (Press Ctrl+Enter to generate)"
+              ? "e.g., 'Create a presentation on digital trust architecture using this presentation's theme.' (Press Ctrl+Enter to generate)"
+              : "e.g., 'Create a comprehensive report on renewable energy grid integration with benchmark tables and diagrams.' (Press Ctrl+Enter to generate)"
           }
           className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/90 p-4 pr-36 text-sm text-white placeholder-zinc-500 transition-all focus:border-cyan-400 focus:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-cyan-400/20"
           required
@@ -332,7 +332,7 @@ export function PromptInput({
                 type="text"
                 value={customInstructions}
                 onChange={(e) => setCustomInstructions(e.target.value)}
-                placeholder="e.g., 'Change blue border to yellow' or 'Include MCTS comparison table'"
+                placeholder="e.g., 'Target audience: engineering leads' or 'Include comparison table'"
                 className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white focus:border-cyan-400 focus:outline-none"
               />
             </div>
@@ -343,7 +343,7 @@ export function PromptInput({
       {/* Action Bar */}
       <div className="mt-5 flex items-center justify-between border-t border-zinc-800/80 pt-4">
         <div className="text-[11px] text-zinc-400">
-          Strict Style Lock guarantees original fonts, borders, and margins remain 100% untouched.
+          Template inheritance preserves original typography, layout hierarchy, and page dimensions.
         </div>
 
         <button

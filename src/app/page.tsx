@@ -2,38 +2,32 @@
 
 import React, { useState } from "react";
 import { Header } from "./components/Header";
+import { ModeBanner } from "./components/ModeBanner";
 import { FileUpload } from "./components/FileUpload";
 import { TemplateLockDisplay } from "./components/TemplateLockDisplay";
 import { PromptInput } from "./components/PromptInput";
-import { GenerationPreview } from "./components/GenerationPreview";
-import { DiffViewer } from "./components/DiffViewer";
+import { ProgressPanel } from "./components/ProgressPanel";
+import { ResultPanel, GenerationResultData } from "./components/ResultPanel";
 import { Shield } from "lucide-react";
-import { TemplateUploadResponse, PromptData, GenerationResult } from "@/types/template";
+import { TemplateUploadResponse, PromptData } from "@/types/template";
 
 export default function Home() {
   const [templateData, setTemplateData] = useState<TemplateUploadResponse | null>(null);
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
-  const [pendingPromptData, setPendingPromptData] = useState<PromptData | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [generationResult, setGenerationResult] = useState<GenerationResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [healthData, setHealthData] = useState<{ mode?: "live" | "demo" | "misconfigured"; model_provider?: string } | null>(null);
 
   const handleTemplateLoaded = (data: TemplateUploadResponse) => {
     setTemplateData(data);
-    setPendingPromptData(null);
+    setActiveJobId(null);
     setGenerationResult(null);
     setError(null);
   };
 
-  const handlePromptSubmit = (data: PromptData) => {
-    setPendingPromptData(data);
-    setError(null);
-  };
-
-  const handleExecuteGeneration = async () => {
-    if (!templateData || !pendingPromptData) return;
-
-    setIsGenerating(true);
+  const handlePromptSubmit = async (data: PromptData) => {
+    if (!templateData) return;
     setError(null);
 
     try {
@@ -42,90 +36,84 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           template_id: templateData.template_id,
-          prompt: pendingPromptData.prompt,
+          prompt: data.prompt,
           document_type: templateData.document_type,
-          mode: pendingPromptData.mode,
-          target_pages_or_slides: pendingPromptData.targetPagesOrSlides,
-          custom_instructions: pendingPromptData.customInstructions,
-          include_images: pendingPromptData.includeImages ?? true,
-          image_mode: pendingPromptData.imageMode ?? "auto",
+          mode: data.mode,
+          target_pages_or_slides: data.targetPagesOrSlides,
+          custom_instructions: data.customInstructions,
+          include_images: data.includeImages ?? true,
+          image_mode: data.imageMode ?? "auto",
         }),
       });
 
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({ detail: "Generation failed." }));
-        throw new Error(errData.error || errData.detail || "Generation failed.");
+        const errData = await response.json().catch(() => ({ detail: "Generation request failed." }));
+        throw new Error(errData.error?.message || errData.error || errData.detail || "Generation request failed.");
       }
 
-      const result = await response.json();
-      setGenerationResult(result);
-      setPendingPromptData(null);
+      const resData = await response.json();
+      if (resData.job_id) {
+        setActiveJobId(resData.job_id);
+      } else {
+        setGenerationResult(resData);
+      }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "An error occurred during artifact generation.";
+      const message = err instanceof Error ? err.message : "Failed to initiate document generation.";
       setError(message);
-    } finally {
-      setIsGenerating(false);
     }
   };
 
   const handleReset = () => {
     setTemplateData(null);
-    setPendingPromptData(null);
+    setActiveJobId(null);
     setGenerationResult(null);
     setError(null);
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] font-sans antialiased text-zinc-100 flex flex-col selection:bg-cyan-500 selection:text-zinc-950">
-      <Header />
+    <div className="min-h-screen bg-[#0a0a0c] font-sans antialiased text-zinc-100 flex flex-col">
+      <Header onHealthUpdate={setHealthData} />
+      <ModeBanner mode={healthData?.mode} provider={healthData?.model_provider} />
 
       <main className="mx-auto flex-1 w-full max-w-6xl px-6 py-8">
-        {/* Futuristic Hero Banner */}
-        <div className="mb-8 rounded-3xl bg-gradient-to-br from-zinc-900/90 via-slate-950 to-zinc-950 p-8 text-white shadow-2xl shadow-cyan-950/20 border border-cyan-500/25 relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-8 -mr-8 h-48 w-48 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none"></div>
-          <div className="absolute bottom-0 left-1/3 -mb-8 h-32 w-64 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none"></div>
-          
-          <div className="max-w-3xl relative z-10">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-950/80 px-3.5 py-1 text-xs font-semibold text-cyan-300 border border-cyan-500/30 shadow-xs shadow-cyan-500/20">
-              <Shield className="h-3.5 w-3.5 text-cyan-400" />
+        {/* Hero Section */}
+        <div className="mb-8 rounded-3xl bg-zinc-950 p-8 text-white border border-zinc-800 relative overflow-hidden">
+          <div className="max-w-3xl relative z-10 space-y-3">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 py-1 text-xs font-medium text-zinc-300 border border-zinc-800">
+              <Shield className="h-3.5 w-3.5 text-indigo-400" />
               <span>Exact Template Inheritance Architecture</span>
             </div>
-            <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              Never recreate themes from scratch.
-              <span className="block bg-gradient-to-r from-cyan-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
-                Modify the existing artifact programmatically.
-              </span>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+              Generate new content while preserving template design.
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-zinc-300">
-              Supply any DOCX, PPTX, or PDF. Local Gemma 4 plans the content, sources relevant visual figures, and strictly reuses existing heading styles, slide masters, and table structures without mutating fonts, margins, or sacred borders.
+            <p className="text-sm leading-relaxed text-zinc-400">
+              Upload a DOCX, PPTX, or PDF template and give a prompt. DocGuru generates fresh, tailored content while inheriting typography, page setup, header/footer layouts, and slide masters without unexpected formatting drift.
             </p>
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Error Notification */}
         {error && (
-          <div className="mb-6 rounded-2xl border border-rose-500/40 bg-rose-950/40 p-4 text-sm text-rose-300 flex items-center justify-between">
+          <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-950/40 p-4 text-sm text-red-300 flex items-center justify-between">
             <div>
               <strong>Error:</strong> {error}
             </div>
             <button
               onClick={() => setError(null)}
-              className="text-xs bg-rose-900/60 px-2 py-1 rounded text-rose-200 hover:bg-rose-900"
+              className="text-xs bg-red-900/60 px-2 py-1 rounded text-red-200 hover:bg-red-900"
             >
               Dismiss
             </button>
           </div>
         )}
 
-        {/* Step 1: Upload or Display Loaded Template */}
+        {/* Step 1: Upload Template */}
         {!templateData && (
           <div className="space-y-6">
             <div className="text-center">
-              <h3 className="text-lg font-bold text-white">
-                Step 1: Provide Your Base Template
-              </h3>
-              <p className="text-xs text-zinc-400">
-                Upload your branded presentation, report, or academic paper template
+              <h3 className="text-lg font-semibold text-white">Select Base Template</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Upload a DOCX, PPTX, or reference PDF template to extract layout invariants
               </p>
             </div>
 
@@ -137,26 +125,31 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 2: Template Loaded State */}
+        {/* Step 2: Template Loaded & Prompt Input / Progress */}
         {templateData && !generationResult && (
           <div className="space-y-6">
             <TemplateLockDisplay spec={templateData.template_spec} />
 
-            {pendingPromptData ? (
-              <GenerationPreview
-                filename={templateData.original_filename}
-                documentType={templateData.document_type}
-                styleHash={templateData.template_spec?.style_hash || ""}
-                prompt={pendingPromptData.prompt}
-                isGenerating={isGenerating}
-                onConfirm={handleExecuteGeneration}
-                onCancel={() => setPendingPromptData(null)}
+            {activeJobId ? (
+              <ProgressPanel
+                jobId={activeJobId}
+                onComplete={(result) => {
+                  setGenerationResult(result);
+                  setActiveJobId(null);
+                }}
+                onError={(err) => {
+                  setError(err.message || "Generation job failed.");
+                  setActiveJobId(null);
+                }}
+                onCancel={() => {
+                  setActiveJobId(null);
+                }}
               />
             ) : (
               <PromptInput
                 documentType={templateData.document_type}
                 onGenerate={handlePromptSubmit}
-                isGenerating={isGenerating}
+                isGenerating={false}
                 extractedRules={templateData.extracted_rules || templateData.template_spec?.extracted_rules}
                 documentOutline={templateData.document_outline || templateData.template_spec?.document_outline}
               />
@@ -164,16 +157,12 @@ export default function Home() {
           </div>
         )}
 
-        {/* Step 3: Generation & Diff Viewer Results */}
+        {/* Step 3: Result Display */}
         {generationResult && (
           <div className="space-y-6">
-            <DiffViewer
-              outputFilename={generationResult.output_filename}
-              downloadUrl={generationResult.download_url}
-              validation={generationResult.validation}
-              executionTime={generationResult.execution_time_sec}
-              plan={generationResult.plan}
-              documentType={templateData?.document_type || "docx"}
+            <ResultPanel
+              result={generationResult}
+              templateType={templateData?.document_type || "docx"}
               onReset={handleReset}
             />
           </div>
@@ -181,7 +170,7 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-zinc-800/80 py-6 text-center text-xs text-zinc-500">
-        Exact Template Inheritance System • Gemma 4 Agentic Engine • Python-Docx & Python-Pptx OXML Architecture
+        DocGuru • Exact Template Inheritance System • Built with Next.js & FastAPI
       </footer>
     </div>
   );
