@@ -8,6 +8,16 @@ import pptx
 from pptx import Presentation
 from pptx.util import Inches as PptxInches, Pt as PptxPt
 
+from backend.app.config import settings
+
+@pytest.fixture(scope="session", autouse=True)
+def configure_test_provider():
+    orig = settings.MODEL_PROVIDER
+    if not settings.api_key:
+        settings.MODEL_PROVIDER = "demo"
+    yield
+    settings.MODEL_PROVIDER = orig
+
 @pytest.fixture(scope="session")
 def fixtures_dir(tmp_path_factory) -> Path:
     base = tmp_path_factory.mktemp("fixtures")

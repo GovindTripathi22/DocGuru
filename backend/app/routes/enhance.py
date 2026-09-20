@@ -9,9 +9,11 @@ from ..errors import AppError
 router = APIRouter(prefix="/api", tags=["Enhance"])
 logger = logging.getLogger(__name__)
 
+from typing import Literal, Optional
+
 class EnhancePromptRequest(BaseModel):
     prompt: str
-    document_type: str = "docx"
+    document_type: Literal["docx", "pptx", "pdf"] = "docx"
     template_title: Optional[str] = None
 
 class EnhancePromptResponse(BaseModel):

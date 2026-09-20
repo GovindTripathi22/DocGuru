@@ -33,8 +33,13 @@ from backend.app.config import settings
 @pytest.fixture(scope="module")
 def client():
     """Module-scoped FastAPI TestClient fixture."""
-    with TestClient(app) as test_client:
-        yield test_client
+    orig_provider = settings.MODEL_PROVIDER
+    settings.MODEL_PROVIDER = "demo"
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        settings.MODEL_PROVIDER = orig_provider
 
 
 # ==============================================================================
