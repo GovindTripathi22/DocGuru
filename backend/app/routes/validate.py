@@ -1,15 +1,18 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from pathlib import Path
+import logging
 
 from ..config import settings
 from ..models.generation import ValidationReport
 from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..validation.diff_validator import DiffValidator
+from ..errors import AppError
 
 router = APIRouter(prefix="/api", tags=["validate"])
 analyzer = TemplateAnalyzer()
 validator = DiffValidator()
+logger = logging.getLogger(__name__)
 
 class ValidateRequest(BaseModel):
     template_id: str
@@ -33,4 +36,5 @@ async def validate_document(req: ValidateRequest):
         report = validator.validate(orig_spec, str(generated_path))
         return report
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Validation failed: {str(e)}")
+        logger.exception("Validation failed for template=%s, generated=%s", req.template_id, req.generated_filename)
+        raise AppError(code="VALIDATION_FAILED", http_status=422, message="Validation failed.")

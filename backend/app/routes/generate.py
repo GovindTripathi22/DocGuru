@@ -10,6 +10,7 @@ from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..ai.planner import DocumentPlanner
 from ..ai.executor import DocumentExecutor
 from ..validation.diff_validator import DiffValidator
+from ..errors import AppError
 
 router = APIRouter(prefix="/api", tags=["generate"])
 logger = logging.getLogger(__name__)
@@ -153,6 +154,8 @@ async def generate_document(req: GenerationRequest):
             message="Artifact generated with 100% exact template style and structure preservation."
         )
 
+    except (HTTPException, AppError):
+        raise
     except Exception as e:
-        logger.error(f"Generation error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Document generation failed: {str(e)}")
+        logger.exception("Generation error for template %s: %s", req.template_id, e)
+        raise AppError(code="GENERATION_FAILED", http_status=500, message="Document generation failed.")

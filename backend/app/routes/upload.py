@@ -7,6 +7,7 @@ import logging
 from ..config import settings
 from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..models.template_spec import TemplateSpecification
+from ..errors import AppError
 
 router = APIRouter(prefix="/api", tags=["upload"])
 analyzer = TemplateAnalyzer()
@@ -35,8 +36,8 @@ async def upload_template(file: UploadFile = File(...)):
         with open(target_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
-        logger.error(f"Failed to save uploaded file: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+        logger.exception("Failed to save uploaded file")
+        raise AppError(code="UPLOAD_SAVE_FAILED", http_status=500, message="Failed to save uploaded file.")
 
     try:
         spec = analyzer.analyze(str(target_path))
@@ -50,5 +51,5 @@ async def upload_template(file: UploadFile = File(...)):
             "template_spec": spec
         }
     except Exception as e:
-        logger.error(f"Failed to analyze template: {e}")
-        raise HTTPException(status_code=422, detail=f"Template analysis failed: {str(e)}")
+        logger.exception("Failed to analyze template")
+        raise AppError(code="TEMPLATE_ANALYSIS_FAILED", http_status=422, message="Template analysis failed. The document structure could not be parsed.")

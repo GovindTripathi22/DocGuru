@@ -1,13 +1,16 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from pathlib import Path
+import logging
 
 from ..config import settings
 from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..models.template_spec import TemplateSpecification
+from ..errors import AppError, TemplateNotFound
 
 router = APIRouter(prefix="/api", tags=["analyze"])
 analyzer = TemplateAnalyzer()
+logger = logging.getLogger(__name__)
 
 class AnalyzeRequest(BaseModel):
     template_id: str
@@ -29,4 +32,5 @@ async def analyze_template(req: AnalyzeRequest):
             "template_spec": spec
         }
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Analysis failed: {str(e)}")
+        logger.exception("Analysis failed for %s", req.template_id)
+        raise AppError(code="TEMPLATE_ANALYSIS_FAILED", http_status=422, message="Template analysis failed.")
