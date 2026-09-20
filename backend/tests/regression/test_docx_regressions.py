@@ -6,7 +6,6 @@ from backend.app.engines.docx_engine import DocxEngine
 from backend.app.models.generation import DocumentPlan
 
 
-@pytest.mark.xfail(strict=True, reason="DOCX-01: create mode does not reliably render plan title and conclusion")
 def test_create_document_contains_the_requested_title_and_conclusion(minimal_docx, tmp_path):
     spec = TemplateAnalyzer().analyze(str(minimal_docx))
     output = tmp_path / "output.docx"

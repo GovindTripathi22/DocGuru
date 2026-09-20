@@ -397,12 +397,25 @@ class DocxEngine:
             # Clear existing sample body paragraphs/tables, but save template table structures
             saved_table_xmls = self.clear_body_content_preserving_structure(doc)
 
+            # Render document title if template originally had a title or if plan has no sections (DOCX-01)
+            template_had_title = False
+            if locked_doc.spec and locked_doc.spec.document_outline:
+                template_had_title = any(
+                    "title" in h.lower() for h in locked_doc.spec.document_outline
+                )
+            if plan.title and (not plan.sections or template_had_title):
+                self.insert_heading(locked_doc, plan.title, requested_style="Title")
+
             # Process each section in the plan
             for idx, section in enumerate(plan.sections):
                 self._render_section(locked_doc, section, saved_table_xmls)
                 # If multi-section document, paginate nicely
                 if idx < len(plan.sections) - 1 and len(plan.sections) > 2:
                     doc.add_page_break()
+
+            # Render document conclusion if provided
+            if plan.conclusion:
+                self.insert_paragraph(locked_doc, plan.conclusion)
 
         # If user explicitly requested theme overrides (e.g., change blue border to yellow)
         if plan.theme_overrides:
