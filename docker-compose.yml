@@ -1,19 +1,49 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
+    env_file:
+      - .env
     environment:
-      - MODEL_PROVIDER=google_ai
-      - MODEL_NAME=gemma-4-31b-it
-      - GEMMA_API_KEY=${GEMMA_API_KEY}
+      - MODEL_PROVIDER=${MODEL_PROVIDER:-google_ai}
+      - MODEL_NAME=${MODEL_NAME:-gemma-4-31b-it}
+      - MODEL_ENDPOINT=${MODEL_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMMA_API_KEY=${GEMMA_API_KEY:-}
+      - TEMPERATURE=${TEMPERATURE:-0.2}
+      - LLM_TIMEOUT_SEC=${LLM_TIMEOUT_SEC:-90}
+      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-3}
+      - LLM_MAX_CONCURRENCY=${LLM_MAX_CONCURRENCY:-3}
+      - LLM_THINKING=${LLM_THINKING:-default}
+      - OUTLINE_MAX_TOKENS=${OUTLINE_MAX_TOKENS:-1200}
+      - SECTION_MAX_TOKENS=${SECTION_MAX_TOKENS:-1800}
+      - DEBUG=${DEBUG:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      - API_KEYS=${API_KEYS:-}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-25}
+      - MAX_PDF_PAGES=${MAX_PDF_PAGES:-100}
+      - RETENTION_HOURS=${RETENTION_HOURS:-24}
+      - WORKER_THREADS=${WORKER_THREADS:-4}
+      - MIN_FREE_MB=${MIN_FREE_MB:-512}
+      - PREVIEW_ENABLED=${PREVIEW_ENABLED:-false}
+      - PAGE_BREAK_BETWEEN_SECTIONS=${PAGE_BREAK_BETWEEN_SECTIONS:-false}
+      - IMAGE_PLACEHOLDERS=${IMAGE_PLACEHOLDERS:-false}
+      - IMAGE_CACHE_MAX_MB=${IMAGE_CACHE_MAX_MB:-500}
+      - IMAGE_TIMEOUT_SEC=${IMAGE_TIMEOUT_SEC:-8}
+      - IMAGE_BUDGET_SEC=${IMAGE_BUDGET_SEC:-25}
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY:-}
+      - PEXELS_API_KEY=${PEXELS_API_KEY:-}
     volumes:
-      - ./backend/uploads:/app/backend/uploads
-      - ./backend/outputs:/app/backend/outputs
+      - backend_data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
   frontend:
     build:
@@ -22,6 +52,23 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - BACKEND_URL=http://backend:8000
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-}
+      - SESSION_SECRET=${SESSION_SECRET:-}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+  ollama_data:
