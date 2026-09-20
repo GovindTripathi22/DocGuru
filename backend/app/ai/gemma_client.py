@@ -141,40 +141,40 @@ class GemmaClient:
         max_tokens: int
     ) -> Dict[str, Any]:
         """
-        Calls local Ollama instance with JSON format asynchronously.
+        Calls local Ollama instance with JSON format asynchronously via httpx.
         """
-        import ollama
         import asyncio
+        endpoint = (self.endpoint or "http://127.0.0.1:11434").rstrip("/")
+        url = f"{endpoint}/api/chat"
+        payload = {
+            "model": self.model_name,
+            "format": "json",
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": max_tokens,
+                "stop": ["<end_of_turn>", "<eos>"]
+            }
+        }
 
-        client = ollama.AsyncClient(host=self.endpoint, timeout=80.0) if self.endpoint else ollama.AsyncClient(timeout=80.0)
-
-        try:
-            response = await asyncio.wait_for(
-                client.chat(
-                    model=self.model_name,
-                    format="json",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    options={
-                        "temperature": self.temperature,
-                        "num_predict": max_tokens,
-                        "stop": ["<end_of_turn>", "<eos>"]
-                    }
-                ),
-                timeout=80.0
-            )
-            raw_content = response["message"]["content"]
-            return self._extract_json_from_text(raw_content)
-        except (asyncio.TimeoutError, ollama.ResponseError, httpx.HTTPError) as e:
-            logger.warning(f"Ollama async call failed or timed out: {e}")
-            raise
-        finally:
+        timeout = httpx.Timeout(80.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
-                await asyncio.shield(client.close())
-            except BaseException:
-                pass
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                raw_content = data.get("message", {}).get("content", "{}")
+                return self._extract_json_from_text(raw_content)
+            except (asyncio.TimeoutError, httpx.TimeoutException) as e:
+                logger.warning(f"Ollama async call timed out: {e}")
+                raise
+            except httpx.HTTPError as e:
+                logger.warning(f"Ollama async call failed: {e}")
+                raise
 
     async def _call_openai_compat(
         self,
