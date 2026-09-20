@@ -135,7 +135,7 @@ def test_concurrency_swarm_parallel_generation_docx_and_pptx(
             "mode": "create_document",
             "target_pages_or_slides": 2
         }
-        res = client.post("/api/generate", json=payload)
+        res = client.post("/api/generate?wait=true", json=payload)
         return {"worker_id": worker_id, "format": "docx", "status": res.status_code, "json": res.json()}
 
     def worker_generate_pptx(worker_id: int) -> Dict[str, Any]:
@@ -146,7 +146,7 @@ def test_concurrency_swarm_parallel_generation_docx_and_pptx(
             "mode": "create_presentation",
             "target_pages_or_slides": 2
         }
-        res = client.post("/api/generate", json=payload)
+        res = client.post("/api/generate?wait=true", json=payload)
         return {"worker_id": worker_id, "format": "pptx", "status": res.status_code, "json": res.json()}
 
     # Execute 16 simultaneous generation tasks (8 DOCX + 8 PPTX) in parallel
@@ -199,7 +199,7 @@ def test_concurrency_rapid_parallel_downloads(rich_docx_template: Path):
         upload_resp = client.post("/api/upload", files={"file": ("dl_test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate", json={
+    gen_resp = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": "Concurrency download stress test payload",
         "document_type": "docx",

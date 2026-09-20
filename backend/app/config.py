@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     MAX_PDF_PAGES: int = Field(default=100, ge=1, le=1000)
     RETENTION_HOURS: int = Field(default=24, ge=1, le=720)
     WORKER_THREADS: int = Field(default=4, ge=1, le=32)
+    MAX_CONCURRENT_JOBS: int = Field(default=4, ge=1, le=64)
     MIN_FREE_MB: int = Field(default=512, ge=1)
     PREVIEW_ENABLED: bool = False
     PAGE_BREAK_BETWEEN_SECTIONS: bool = False
@@ -53,6 +54,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     OUTPUT_DIR: Path = BASE_DIR / "outputs"
     TEMP_DIR: Path = BASE_DIR / "temp"
+    DATA_DIR: Path = BASE_DIR / "data"
+    JOBS_DIR: Path = BASE_DIR / "data" / "jobs"
 
     @field_validator("CORS_ORIGINS")
     @classmethod
@@ -110,5 +113,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-for directory in (settings.UPLOAD_DIR, settings.OUTPUT_DIR, settings.TEMP_DIR):
+for directory in (settings.UPLOAD_DIR, settings.OUTPUT_DIR, settings.TEMP_DIR, settings.DATA_DIR, settings.JOBS_DIR):
     directory.mkdir(parents=True, exist_ok=True)

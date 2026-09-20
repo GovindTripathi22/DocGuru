@@ -40,6 +40,7 @@ The table below lists all supported configuration variables. All names and defau
 | `MAX_PDF_PAGES` | `100` | Maximum pages allowed for PDF templates. |
 | `RETENTION_HOURS` | `24` | Storage retention TTL for templates and outputs in hours. |
 | `WORKER_THREADS` | `4` | Concurrency limiter capacity for sync CPU workloads. |
+| `MAX_CONCURRENT_JOBS` | `4` | Maximum concurrent document generation jobs. |
 | `MIN_FREE_MB` | `512` | Minimum free disk space in megabytes for readiness checks. |
 | `PREVIEW_ENABLED` | `false` | Enable headless LibreOffice PDF/PNG thumbnail previews. |
 | `PAGE_BREAK_BETWEEN_SECTIONS` | `false` | Insert hard page breaks between sections. |

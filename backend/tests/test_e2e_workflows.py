@@ -267,7 +267,7 @@ def test_e2e_workflow_3_docx_generation(client: TestClient, sample_docx_template
         "mode": "create_document",
         "target_pages_or_slides": 2
     }
-    gen_resp = client.post("/api/generate", json=gen_payload)
+    gen_resp = client.post("/api/generate?wait=true", json=gen_payload)
     assert gen_resp.status_code == 200, f"Generation failed: {gen_resp.text}"
     gen_data = gen_resp.json()
 
@@ -314,7 +314,7 @@ def test_e2e_workflow_4_docx_download(client: TestClient, sample_docx_template: 
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate", json={
+    gen_resp = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": "Quarterly Financial Analysis & Strategic Benchmarking",
         "document_type": "docx"
@@ -379,7 +379,7 @@ def test_e2e_workflow_5_pptx_generation(client: TestClient, sample_pptx_template
         "mode": "create_presentation",
         "target_pages_or_slides": 3
     }
-    gen_resp = client.post("/api/generate", json=gen_payload)
+    gen_resp = client.post("/api/generate?wait=true", json=gen_payload)
     assert gen_resp.status_code == 200, f"PPTX Generation failed: {gen_resp.text}"
     gen_data = gen_resp.json()
 
@@ -421,7 +421,7 @@ def test_e2e_workflow_6_pptx_download(client: TestClient, sample_pptx_template: 
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate", json={
+    gen_resp = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": "Scalable Multi-Agent AI Infrastructure",
         "document_type": "pptx"
@@ -466,7 +466,7 @@ def test_e2e_validate_endpoint_docx_success(client: TestClient, sample_docx_temp
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate", json={
+    gen_resp = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": "Deep Learning Acceleration Benchmark",
         "document_type": "docx"
@@ -495,7 +495,7 @@ def test_e2e_validate_endpoint_pptx_success(client: TestClient, sample_pptx_temp
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate", json={
+    gen_resp = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": "Cloud Native Storage Evolution",
         "document_type": "pptx"
@@ -565,7 +565,7 @@ def test_e2e_full_lifecycle_docx_pipeline(client: TestClient, sample_docx_templa
     enhanced_prompt = enhance_res.json()["enhanced_prompt"]
 
     # Step 3: Generate
-    gen_res = client.post("/api/generate", json={
+    gen_res = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": enhanced_prompt,
         "document_type": "docx",
@@ -621,7 +621,7 @@ def test_e2e_full_lifecycle_pptx_pipeline(client: TestClient, sample_pptx_templa
     enhanced_prompt = enhance_res.json()["enhanced_prompt"]
 
     # Step 3: Generate
-    gen_res = client.post("/api/generate", json={
+    gen_res = client.post("/api/generate?wait=true", json={
         "template_id": template_id,
         "prompt": enhanced_prompt,
         "document_type": "pptx",

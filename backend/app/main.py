@@ -15,8 +15,10 @@ from .routes.analyze import router as analyze_router
 from .routes.download import router as download_router
 from .routes.enhance import router as enhance_router
 from .routes.generate import router as generate_router
+from .routes.jobs import router as jobs_router
 from .routes.upload import router as upload_router
 from .routes.validate import router as validate_router
+from .jobs import job_manager
 
 import json
 import sys
@@ -61,6 +63,8 @@ def make_error_response(code: str, message: str, request_id: str, http_status: i
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("startup mode=%s provider=%s model=%s", settings.mode, settings.MODEL_PROVIDER, settings.MODEL_NAME)
+    job_manager.recover_interrupted_jobs()
+    job_manager.purge_expired()
     yield
 
 
@@ -133,7 +137,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return make_error_response("VALIDATION_ERROR", "The request body or parameters failed validation.", request_id, 422, {"errors": exc.errors()})
 
 
-for router in (upload_router, analyze_router, generate_router, validate_router, download_router, enhance_router):
+for router in (upload_router, analyze_router, generate_router, validate_router, download_router, enhance_router, jobs_router):
     app.include_router(router)
 
 

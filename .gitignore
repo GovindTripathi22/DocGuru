@@ -56,4 +56,6 @@ backend/outputs/*
 !backend/outputs/.gitkeep
 backend/temp/*
 temp/
+backend/data/
+
 
