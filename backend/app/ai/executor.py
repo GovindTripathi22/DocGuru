@@ -1,14 +1,15 @@
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional, List
 from pathlib import Path
 import logging
 
 from ..engines.docx_engine import DocxEngine
 from ..engines.pptx_engine import PptxEngine
 from ..engines.style_lock import LockedTemplate, LockedPresentation
-from ..models.generation import DocumentPlan, PresentationPlan
+from ..models.generation import DocumentPlan, PresentationPlan, ThemeOverrideRequest
 from ..models.template_spec import TemplateSpecification
 
 logger = logging.getLogger(__name__)
+
 
 class DocumentExecutor:
     """
@@ -26,7 +27,14 @@ class DocumentExecutor:
         template_path: str,
         spec: TemplateSpecification,
         plan: DocumentPlan,
-        output_path: str
+        output_path: str,
+        template_mode: str = "auto",
+        body_anchor_index: Optional[int] = None,
+        overrides: Optional[List[ThemeOverrideRequest]] = None,
+        edit_action: Optional[str] = None,
+        target_heading: Optional[str] = None,
+        target_index: Optional[int] = None,
+        warnings: Optional[List[str]] = None,
     ) -> str:
         """
         Executes a DocumentPlan against a locked DOCX template.
@@ -35,7 +43,14 @@ class DocumentExecutor:
         output_file = self.docx_engine.generate_from_plan(
             locked_doc=locked_doc,
             plan=plan,
-            output_path=output_path
+            output_path=output_path,
+            template_mode=template_mode,
+            body_anchor_index=body_anchor_index,
+            overrides=overrides,
+            edit_action=edit_action,
+            target_heading=target_heading,
+            target_index=target_index,
+            warnings=warnings,
         )
         return output_file
 
@@ -44,7 +59,9 @@ class DocumentExecutor:
         template_path: str,
         spec: TemplateSpecification,
         plan: PresentationPlan,
-        output_path: str
+        output_path: str,
+        keep_existing_slides: bool = False,
+        warnings: Optional[List[str]] = None,
     ) -> str:
         """
         Executes a PresentationPlan against a locked PPTX template.
@@ -53,6 +70,8 @@ class DocumentExecutor:
         output_file = self.pptx_engine.generate_from_plan(
             locked_prs=locked_prs,
             plan=plan,
-            output_path=output_path
+            output_path=output_path,
+            keep_existing_slides=keep_existing_slides,
+            warnings=warnings,
         )
         return output_file

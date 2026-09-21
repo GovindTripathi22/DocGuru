@@ -20,10 +20,8 @@ from .generation import (
     PresentationPlan,
     SlidePlan,
     ValidationReport,
-)
-from .tool_calls import (
-    ToolCall,
-    ToolCallResult,
+    ComponentResult,
+    ThemeOverrideRequest,
 )
 
 __all__ = [
@@ -46,6 +44,6 @@ __all__ = [
     "PresentationPlan",
     "SlidePlan",
     "ValidationReport",
-    "ToolCall",
-    "ToolCallResult",
+    "ComponentResult",
+    "ThemeOverrideRequest",
 ]

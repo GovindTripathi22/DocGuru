@@ -42,7 +42,7 @@ class LockedTemplate:
         elif self.spec.available_body_styles:
             self.default_body_style = self.spec.available_body_styles[0]
         elif self.valid_doc_paragraph_styles:
-            self.default_body_style = next(iter(self.valid_doc_paragraph_styles))
+            self.default_body_style = sorted(self.valid_doc_paragraph_styles)[0]
         else:
             self.default_body_style = "Normal"
 
@@ -56,15 +56,15 @@ class LockedTemplate:
                 if tr.style_name and tr.style_name in self.valid_doc_table_styles:
                     return tr.style_name
 
-        for s in self.valid_doc_table_styles:
+        for s in sorted(self.valid_doc_table_styles):
             if "grid" in s.lower():
                 return s
-        for s in self.valid_doc_table_styles:
+        for s in sorted(self.valid_doc_table_styles):
             if "table" in s.lower():
                 return s
 
         if self.valid_doc_table_styles:
-            return next(iter(self.valid_doc_table_styles))
+            return sorted(self.valid_doc_table_styles)[0]
 
         return None
 
@@ -83,13 +83,13 @@ class LockedTemplate:
                 return style_name
 
             # Case-insensitive match in actual doc paragraph styles
-            for s in self.valid_doc_paragraph_styles:
+            for s in sorted(self.valid_doc_paragraph_styles):
                 if s.lower() == style_name.lower():
                     return s
 
             # Heading style match in actual doc paragraph styles
             if "heading" in style_name.lower():
-                for s in self.valid_doc_paragraph_styles:
+                for s in sorted(self.valid_doc_paragraph_styles):
                     if "heading" in s.lower():
                         if "1" in style_name and "1" in s:
                             return s
@@ -98,7 +98,7 @@ class LockedTemplate:
                         if "3" in style_name and "3" in s:
                             return s
                 # Fall back to any heading style found
-                for s in self.valid_doc_paragraph_styles:
+                for s in sorted(self.valid_doc_paragraph_styles):
                     if "heading" in s.lower() or "title" in s.lower():
                         return s
 
@@ -109,12 +109,12 @@ class LockedTemplate:
         if style_name in self.allowed_styles:
             return style_name
 
-        for s in self.allowed_styles:
+        for s in sorted(self.allowed_styles):
             if s.lower() == style_name.lower():
                 return s
 
         if "heading" in style_name.lower() and self.allowed_heading_styles:
-            return next(iter(self.allowed_heading_styles))
+            return sorted(self.allowed_heading_styles)[0]
 
         return self.default_body_style
 

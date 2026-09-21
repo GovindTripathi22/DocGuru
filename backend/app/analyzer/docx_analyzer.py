@@ -244,12 +244,13 @@ class DocxAnalyzer:
         if not body_styles:
             body_styles = ["Normal"]
 
+        detected_fallback = sorted(all_fonts)[0] if all_fonts else "Normal"
         font_spec = FontSpec(
-            default=default_font,
-            body="Calibri",
-            heading1=heading1_font or "Calibri Light",
-            heading2=heading2_font or "Calibri Light",
-            all_detected_fonts=sorted(list(all_fonts))
+            default=default_font or detected_fallback,
+            body=default_font or detected_fallback,
+            heading1=heading1_font or default_font or detected_fallback,
+            heading2=heading2_font or default_font or detected_fallback,
+            all_detected_fonts=sorted(list(all_fonts)),
         )
 
         return styles_dict, font_spec, heading_styles, body_styles

@@ -155,17 +155,17 @@ class SlideDimensionSpec(BaseModel):
     aspect_ratio: str = "16:9"  # "16:9", "4:3", etc.
 
 class LockStatus(BaseModel):
-    fonts: str = "LOCKED"
-    colors: str = "LOCKED"
-    borders: str = "LOCKED"
-    margins: str = "LOCKED"
-    layouts: str = "LOCKED"
-    headers: str = "LOCKED"
-    footers: str = "LOCKED"
-    theme: str = "LOCKED"
-    page_size: str = "LOCKED"
-    styles: str = "LOCKED"
-    table_styles: str = "LOCKED"
+    fonts: str = "guarded"
+    colors: str = "guarded"
+    borders: str = "guarded"
+    margins: str = "guarded"
+    layouts: str = "guarded"
+    headers: str = "guarded"
+    footers: str = "guarded"
+    theme: str = "guarded"
+    page_size: str = "guarded"
+    styles: str = "guarded"
+    table_styles: str = "guarded"
 
 class TemplateSpecification(BaseModel):
     filename: str

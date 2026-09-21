@@ -103,7 +103,7 @@ def test_empty_plan_raises_invalid_response():
 
 
 def test_async_heartbeat_gap():
-    """LLM-03: Event loop heartbeat gap stays <= 200ms during concurrent async operations."""
+    """LLM-03 & A-04: Fake provider await asyncio.sleep(1) with heartbeat ticking every 50ms stays <= 200ms and finishes < 4s."""
     max_gap = 0.0
     stop_heartbeat = asyncio.Event()
 
@@ -111,26 +111,29 @@ def test_async_heartbeat_gap():
         nonlocal max_gap
         last = time.perf_counter()
         while not stop_heartbeat.is_set():
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.05)
             now = time.perf_counter()
-            gap = now - last - 0.02
+            gap = now - last - 0.05
             if gap > max_gap:
                 max_gap = gap
             last = now
 
-    async def mock_work():
-        await asyncio.sleep(0.05)
-        return {"status": "ok"}
+    async def mock_provider_generate():
+        await asyncio.sleep(1.0)
+        return {"title": "Concurrent Doc", "sections": []}
 
     async def runner():
+        start = time.perf_counter()
         hb_task = asyncio.create_task(heartbeat())
-        tasks = [mock_work() for _ in range(20)]
+        tasks = [mock_provider_generate() for _ in range(20)]
         await asyncio.gather(*tasks)
         stop_heartbeat.set()
         await hb_task
+        total_time = time.perf_counter() - start
+        return total_time
 
-    asyncio.run(runner())
-    # Max heartbeat gap must be under 200 ms
+    elapsed = asyncio.run(runner())
+    assert elapsed < 4.0, f"20 concurrent 1s calls took {elapsed:.2f}s (should be < 4s)"
     assert max_gap <= 0.20, f"Heartbeat gap {max_gap*1000:.1f}ms exceeded 200ms limit"
 
 

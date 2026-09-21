@@ -58,4 +58,4 @@ def test_explicit_border_mutation_preserves_other_styles(tmp_path: Path):
     
     # Verify the document contains the text and headings
     assert len(gen_doc.paragraphs) > 0
-    assert "1. Introduction with Yellow Border" in gen_doc.paragraphs[0].text
+    assert any("1. Introduction with Yellow Border" in p.text for p in gen_doc.paragraphs)

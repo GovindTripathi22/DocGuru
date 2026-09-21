@@ -55,6 +55,9 @@ async def upload_template(file: UploadFile = File(...)):
             "template_spec": spec,
         }
     except Exception as e:
+        # SEC-02: Clean up partial or invalid uploaded file immediately
+        if target_path.exists():
+            target_path.unlink(missing_ok=True)
         logger.exception("Failed to analyze template")
         raise AppError(
             code="TEMPLATE_ANALYSIS_FAILED",

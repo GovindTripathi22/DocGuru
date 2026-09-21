@@ -258,10 +258,7 @@ class JobManager:
         output_path = settings.OUTPUT_DIR / output_filename
 
         if spec.document_type == "docx":
-            is_edit = (
-                req.mode in ["edit_document", "edit_presentation"]
-                or any(kw in req.prompt.lower() for kw in ["add chapter", "add section", "edit section", "expand chapter", "expand section", "insert after", "append chapter"])
-            )
+            is_edit = (req.mode in ["edit_document", "edit_presentation"] or req.edit_action is not None)
             if is_edit and (spec.document_outline or spec.total_pages_or_slides > 1):
                 plan = await self.planner.plan_document_edit(
                     user_prompt=req.prompt,
@@ -271,30 +268,33 @@ class JobManager:
                     image_mode=req.image_mode,
                 )
             else:
+                target_count = req.target_sections or req.target_pages or req.target_pages_or_slides
                 plan = await self.planner.plan_document(
                     user_prompt=req.prompt,
                     template_spec=spec,
-                    target_pages=req.target_pages_or_slides,
+                    target_pages=target_count,
                     custom_instructions=req.custom_instructions,
                     include_images=req.include_images,
                     image_mode=req.image_mode,
                 )
 
         elif spec.document_type == "pptx":
+            target_count = req.target_slides or req.target_pages_or_slides
             plan = await self.planner.plan_presentation(
                 user_prompt=req.prompt,
                 template_spec=spec,
-                target_slides=req.target_pages_or_slides,
+                target_slides=target_count,
                 custom_instructions=req.custom_instructions,
                 include_images=req.include_images,
                 image_mode=req.image_mode,
             )
 
         elif spec.document_type == "pdf":
+            target_count = req.target_sections or req.target_pages or req.target_pages_or_slides
             plan = await self.planner.plan_document(
                 user_prompt=req.prompt,
                 template_spec=spec,
-                target_pages=req.target_pages_or_slides,
+                target_pages=target_count,
                 custom_instructions=req.custom_instructions,
                 include_images=req.include_images,
                 image_mode=req.image_mode,
@@ -333,6 +333,13 @@ class JobManager:
                     spec=spec,
                     plan=plan,
                     output_path=str(output_path),
+                    template_mode=req.template_mode,
+                    body_anchor_index=req.body_anchor_index,
+                    overrides=req.overrides,
+                    edit_action=req.edit_action,
+                    target_heading=req.edit_target_heading,
+                    target_index=req.edit_target_index,
+                    warnings=job.warnings,
                 )
             )
         elif spec.document_type == "pptx":
@@ -342,18 +349,20 @@ class JobManager:
                     spec=spec,
                     plan=plan,
                     output_path=str(output_path),
+                    warnings=job.warnings,
                 )
             )
         elif spec.document_type == "pdf":
-            from docx import Document
-            from ..engines.style_lock import LockedTemplate
+            from ..engines.pdf_reference import PdfReferenceBuilder
             from ..engines.docx_engine import DocxEngine
+            from ..engines.style_lock import LockedTemplate
 
             def render_pdf_base():
-                doc = Document()
-                locked_doc = LockedTemplate(doc, "", spec)
+                builder = PdfReferenceBuilder()
+                doc = builder.build_docx_base(spec, output_path)
+                locked_doc = LockedTemplate(doc, str(output_path), spec)
                 de = DocxEngine()
-                de.generate_from_plan(locked_doc, plan, str(output_path))
+                de.generate_from_plan(locked_doc, plan, str(output_path), warnings=job.warnings)
 
             await anyio.to_thread.run_sync(render_pdf_base)
 
@@ -365,14 +374,24 @@ class JobManager:
         self._save_job_snapshot(job)
 
         if spec.document_type in ("docx", "pptx"):
-            val_report = await anyio.to_thread.run_sync(self.validator.validate, spec, str(output_path))
+            intentional_overrides = [ov.target for ov in req.overrides]
+            val_report = await anyio.to_thread.run_sync(
+                lambda: self.validator.validate(
+                    spec,
+                    str(output_path),
+                    intentional_overrides=intentional_overrides,
+                    original_file_path=str(template_path),
+                )
+            )
         else:
             val_report = ValidationReport(
+                status="not_applicable",
                 passed=True,
                 original_style_hash=spec.style_hash,
                 generated_style_hash=spec.style_hash,
                 hash_match=True,
                 issues=[],
+                warnings=["PDF reference mode: layout is approximate."],
             )
 
         if not val_report.passed and spec.document_type in ("docx", "pptx"):
@@ -388,7 +407,10 @@ class JobManager:
         job.stage = "done"
         job.status = "succeeded"
         job.progress = 1.0
-        job.message = "Artifact generated with exact template style and structure preservation."
+        if val_report.status == "not_applicable":
+            job.message = "Document generated in PDF reference mode (approximate layout)."
+        else:
+            job.message = "Document generated with template inheritance verified."
         job.updated_at = time.time()
 
         elapsed = round(time.time() - job.created_at, 2)
