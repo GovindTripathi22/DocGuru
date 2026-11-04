@@ -28,12 +28,12 @@
 | ID | Status | Evidence | Commit | Notes |
 | --- | --- | --- | --- | --- |
 | LLM-01 | FIXED | `test_fail_safe.py`, `backend/app/llm/` | c5800be | Unconfigured live provider returns 503 `LLM_NOT_CONFIGURED`; zero silent fallbacks to demo text. |
-| LLM-02 | FIXED | `test_generation_length_and_research.py` | current work | Replaced one whole-document cap with outline, bounded section writing, per-section quality review, truncation recovery, and completion errors. |
+| LLM-02 | FIXED | `test_generation_length_and_research.py` | b364029 | Replaced one whole-document cap with outline, bounded section writing, per-section quality review, truncation recovery, and completion errors. |
 | LLM-03 | FIXED | `test_demo_provider.py` | c5800be | Dynamic, topic-derived demo mode synthesizing content based on prompt keywords. |
 | LLM-04 | FIXED | `test_normalize.py` | c5800be | Prompt normalization handling control characters and malformed inputs. |
 | LLM-05 | FIXED | `test_injection_quarantine.py` | c5800be | Prompt injection attempts quarantined without overriding document style invariants. |
 | LLM-06 | FIXED | `backend/app/llm/providers/` | c5800be | Unified asynchronous provider implementations for Google AI, Ollama, and Demo. |
-| LLM-08 | FIXED | `test_injection_quarantine.py`, `test_generation_length_and_research.py` | c5800be + current work | Structured JSON and untrusted template/source boundaries; document output budgets are now staged per outline/section/review call rather than one whole-document cap. |
+| LLM-08 | FIXED | `test_injection_quarantine.py`, `test_generation_length_and_research.py` | c5800be + b364029 | Structured JSON and untrusted template/source boundaries; document output budgets are now staged per outline/section/review call rather than one whole-document cap. |
 | LLM-09 | FIXED | `test_r1_r2_resilience.py` | c5800be | Request timeouts and shielded socket closure preventing socket leaks. |
 
 ### Phase 3: Template Invariants & Validation
@@ -76,7 +76,7 @@
 | FE-02 | FIXED | `ProgressPanel.tsx` | 39ff829 | Dynamic job progress polling replacing hardcoded interval timers. |
 | FE-03 | FIXED | `ResultPanel.tsx` | 39ff829 | Component verification table displaying real OpenXML validation results. |
 | FE-04 | FIXED | `Header.tsx`, `ModeBanner.tsx` | 39ff829 | Real-time health model status polling and dynamic demo mode banner. |
-| FE-10 | PARTIAL | `npm run test:frontend`, `src/lib/generation-request.test.mjs` | current work | Five request-builder tests pass; React component, browser end-to-end, and axe accessibility tests from the full work order are not present. |
+| FE-10 | PARTIAL | `npm run test:frontend`, `src/lib/generation-request.test.mjs` | b364029 | Five request-builder tests pass; React component, browser end-to-end, and axe accessibility tests from the full work order are not present. |
 | FE-08 | FIXED | `src/app/layout.tsx` | 39ff829 | Offline fonts; removed `next/font/google` remote font network requests. |
 | FE-09 | FIXED | `src/lib/backend.ts`, API routes | 39ff829 | Session signing, API key forwarding, and streaming file download handling. |
 
@@ -84,8 +84,8 @@
 | ID | Status | Evidence | Commit | Notes |
 | --- | --- | --- | --- | --- |
 | OPS-03 | FIXED | `Dockerfile.backend`, `Dockerfile.frontend`, `docker-compose.yml` | 584225c | Non-root users (`docguru` UID 10001, `node` UID 1000), `tini` init, `no-new-privileges:true`. |
-| OPS-04 | PARTIAL | `package.json` | current work | Separate `dev` and `dev:backend` scripts exist; the requested `dev:all` command and Makefile targets are absent. |
-| OPS-05 | PARTIAL | `.github/workflows/ci.yml`, local Ruff/mypy gates | 584225c + current work | CI covers basic backend/frontend gates, but the full requested security, type, coverage, Docker, and Playwright matrix is incomplete. Current local Ruff and mypy checks fail as recorded below. |
+| OPS-04 | PARTIAL | `package.json` | b364029 | Separate `dev` and `dev:backend` scripts exist; the requested `dev:all` command and Makefile targets are absent. |
+| OPS-05 | PARTIAL | `.github/workflows/ci.yml`, local Ruff/mypy gates | 584225c + b364029 | CI covers basic backend/frontend gates, but the full requested security, type, coverage, Docker, and Playwright matrix is incomplete. Current local Ruff and mypy checks fail as recorded below. |
 | DEAD-01 | FIXED | Frontend & backend file audit | 584225c | Obsolete components (`DiffViewer.tsx`, `GenerationPreview.tsx`) and legacy imports removed. |
 
 ### Phase 10: Documentation & Reports
@@ -95,7 +95,7 @@
 | DOC-02 | FIXED | `docs/PRIVACY.md` | 813ce4c | Data lifecycle, retention policies, prompt quarantine, and log content privacy. |
 | DOC-03 | FIXED | `docs/MANUAL_QA.md` | 813ce4c | Step-by-step human verification checklist for Word, PowerPoint, Docker, and real LLMs. |
 | DOC-04 | FIXED | `docs/DECISIONS.md`, `README.md` | 813ce4c | Architectural decision record and comprehensive project README update. |
-| TEST-01/02 | PARTIAL | `backend/tests/`, `src/lib/generation-request.test.mjs` | current work | The 156-test backend suite and five frontend request tests pass. Coverage measured 73.94%, below the 80% target; the Hypothesis matrix, Playwright, and axe gates remain incomplete. |
+| TEST-01/02 | PARTIAL | `backend/tests/`, `src/lib/generation-request.test.mjs` | b364029 | The 156-test backend suite and five frontend request tests pass. Coverage measured 73.94%, below the 80% target; the Hypothesis matrix, Playwright, and axe gates remain incomplete. |
 
 ---
 
