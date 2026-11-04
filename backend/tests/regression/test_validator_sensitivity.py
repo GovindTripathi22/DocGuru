@@ -9,6 +9,8 @@ from pptx import Presentation
 from backend.app.analyzer.template_analyzer import TemplateAnalyzer
 from backend.app.validation.diff_validator import DiffValidator
 from backend.app.validation.fingerprint import fingerprint_package
+from backend.app.validation.fingerprint import PackageFingerprint
+import backend.app.validation.diff_validator as diff_validator_module
 
 
 def test_validator_idempotence_load_save_without_edits(minimal_docx, tmp_path):
@@ -87,3 +89,28 @@ def test_pptx_slide_size_mutation_fails_validation(minimal_pptx, tmp_path):
     assert report.passed is False
     assert report.status == "failed"
     assert any(c.name == "slide_size" and c.status == "changed" for c in report.components)
+
+
+def test_validator_reports_missing_fingerprint_component_without_crashing(minimal_docx, tmp_path, monkeypatch):
+    """A package missing a component is reported as drift instead of raising while formatting its hash."""
+    original_spec = TemplateAnalyzer().analyze(str(minimal_docx))
+    generated_path = tmp_path / "missing_component.docx"
+    Document(minimal_docx).save(generated_path)
+    fingerprints = iter(
+        [
+            PackageFingerprint(components={"styles": "original-style-hash", "numbering": "original-numbering-hash"}),
+            PackageFingerprint(components={"styles": "changed-style-hash"}),
+        ]
+    )
+    monkeypatch.setattr(diff_validator_module, "fingerprint_package", lambda _path: next(fingerprints))
+
+    report = DiffValidator().validate(
+        original_spec,
+        str(generated_path),
+        original_file_path=str(minimal_docx),
+    )
+
+    assert report.passed is False
+    numbering = next(component for component in report.components if component.name == "numbering")
+    assert numbering.status == "changed"
+    assert "missing" in numbering.detail.lower()

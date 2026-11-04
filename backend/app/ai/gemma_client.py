@@ -10,10 +10,12 @@ from ..config import settings
 from ..errors import (
     LLMInvalidResponse,
     LLMNotConfigured,
+    LLMTimeout,
+    LLMUnavailable,
 )
 from ..llm.factory import get_llm_provider
+from ..llm.concurrency import llm_call_slot
 from ..llm.google_ai import GoogleAIProvider
-from ..llm.ollama import OllamaProvider
 from ..llm.openai_compat import OpenAICompatProvider
 
 logger = logging.getLogger(__name__)
@@ -60,12 +62,13 @@ class GemmaClient:
 
         provider = get_llm_provider(self.provider)
         try:
-            result = await provider.generate_json(
-                system=system_prompt,
-                user=user_prompt,
-                schema=response_schema,
-                max_output_tokens=tokens,
-            )
+            async with llm_call_slot():
+                result = await provider.generate_json(
+                    system=system_prompt,
+                    user=user_prompt,
+                    schema=response_schema,
+                    max_output_tokens=tokens,
+                )
             if result.parsed is not None:
                 return result.parsed
             return self._extract_json_from_text(result.content)

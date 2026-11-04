@@ -6,6 +6,7 @@
     "dev": "next dev",
     "dev:backend": "python -m uvicorn backend.app.main:app --reload --port 8000",
     "test:backend": "python -m pytest backend/tests -v",
+    "test:frontend": "node --experimental-default-type=module --test src/lib/generation-request.test.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

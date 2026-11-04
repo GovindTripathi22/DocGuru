@@ -29,6 +29,7 @@ JobStage = Literal[
     "queued",
     "analyzing",
     "planning_outline",
+    "researching",
     "writing_sections",
     "fetching_images",
     "assembling",
@@ -257,6 +258,19 @@ class JobManager:
         output_filename = f"generated_{uuid.uuid4().hex[:8]}{output_ext}"
         output_path = settings.OUTPUT_DIR / output_filename
 
+        async def report_planning_progress(stage: str, done: int, total: int) -> None:
+            total = max(1, total)
+            job.stage = stage  # type: ignore[assignment]
+            job.current = {"done": done, "total": total}
+            if stage == "researching":
+                job.progress = 0.27
+                job.message = "Finding and checking source metadata for the requested topic..."
+            else:
+                job.progress = 0.30 + (0.36 * done / total)
+                job.message = f"Writing section {done} of {total}..."
+            job.updated_at = time.time()
+            self._save_job_snapshot(job)
+
         if spec.document_type == "docx":
             is_edit = (req.mode in ["edit_document", "edit_presentation"] or req.edit_action is not None)
             if is_edit and (spec.document_outline or spec.total_pages_or_slides > 1):
@@ -268,36 +282,41 @@ class JobManager:
                     image_mode=req.image_mode,
                 )
             else:
-                target_count = req.target_sections or req.target_pages or req.target_pages_or_slides
                 plan = await self.planner.plan_document(
                     user_prompt=req.prompt,
                     template_spec=spec,
-                    target_pages=target_count,
+                    target_pages=req.target_pages,
+                    detail_level=req.detail_level,
+                    target_sections=req.target_sections,
                     custom_instructions=req.custom_instructions,
                     include_images=req.include_images,
                     image_mode=req.image_mode,
+                    research_enabled=req.research_enabled,
+                    on_progress=report_planning_progress,
                 )
 
         elif spec.document_type == "pptx":
-            target_count = req.target_slides or req.target_pages_or_slides
             plan = await self.planner.plan_presentation(
                 user_prompt=req.prompt,
                 template_spec=spec,
-                target_slides=target_count,
+                target_slides=req.target_slides,
                 custom_instructions=req.custom_instructions,
                 include_images=req.include_images,
                 image_mode=req.image_mode,
             )
 
         elif spec.document_type == "pdf":
-            target_count = req.target_sections or req.target_pages or req.target_pages_or_slides
             plan = await self.planner.plan_document(
                 user_prompt=req.prompt,
                 template_spec=spec,
-                target_pages=target_count,
+                target_pages=req.target_pages,
+                detail_level=req.detail_level,
+                target_sections=req.target_sections,
                 custom_instructions=req.custom_instructions,
                 include_images=req.include_images,
                 image_mode=req.image_mode,
+                research_enabled=req.research_enabled,
+                on_progress=report_planning_progress,
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported document type: {spec.document_type}")
@@ -421,6 +440,15 @@ class JobManager:
             plan_summary = [{"title": s.title, "layout": s.layout_name} for s in plan.slides]
 
         mode = getattr(plan, "generation_mode", None) or ("demo" if settings.MODEL_PROVIDER == "demo" else "live")
+        result_warnings = list(
+            dict.fromkeys(
+                [
+                    *getattr(plan, "warnings", []),
+                    *job.warnings,
+                    *getattr(val_report, "warnings", []),
+                ]
+            )
+        )
 
         result = {
             "success": True,
@@ -434,7 +462,8 @@ class JobManager:
             "template_spec": spec.model_dump() if hasattr(spec, "model_dump") else spec.dict(),
             "plan": plan.model_dump() if hasattr(plan, "model_dump") else plan.dict(),
             "validation": val_report.model_dump() if hasattr(val_report, "model_dump") else val_report.dict(),
-            "warnings": getattr(plan, "warnings", []),
+            "warnings": result_warnings,
+            "research_sources": [source.model_dump() for source in getattr(plan, "research_sources", [])],
             "timings": {"execution_time_sec": elapsed},
             "execution_time_sec": elapsed,
             "model": settings.MODEL_NAME,

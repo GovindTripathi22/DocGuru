@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     IMAGE_BUDGET_SEC: int = Field(default=25, ge=1, le=300)
     UNSPLASH_ACCESS_KEY: str = ""
     PEXELS_API_KEY: str = ""
+    TAVILY_API_KEY: str = ""
+    RESEARCH_TIMEOUT_SEC: int = Field(default=15, ge=1, le=60)
+    RESEARCH_MAX_SOURCES: int = Field(default=8, ge=3, le=20)
     OFFLINE_MODE: bool = False  # Compatibility input; demo is explicit provider.
     BASE_DIR: Path = BASE_DIR
     UPLOAD_DIR: Path = BASE_DIR / "uploads"

@@ -12,6 +12,7 @@ import {
   FileCheck,
   AlertTriangle,
 } from "lucide-react";
+import type { ResearchSource } from "@/types/template";
 
 interface ComponentResult {
   name: string;
@@ -46,6 +47,7 @@ export interface GenerationResultData {
   plan_summary?: Array<{ title: string; layout?: string }>;
   validation: ValidationReport;
   warnings?: string[];
+  research_sources?: ResearchSource[];
   execution_time_sec?: number;
   timings?: Record<string, number>;
   model?: string;
@@ -278,6 +280,25 @@ export function ResultPanel({ result, templateType, onReset }: ResultPanelProps)
             ))}
           </ul>
         </div>
+      )}
+
+      {/* Warnings if any */}
+      {result.research_sources && result.research_sources.length > 0 && (
+        <section className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-5 space-y-3 text-xs text-cyan-100">
+          <h3 className="font-semibold text-cyan-300">Research sources</h3>
+          <ol className="list-decimal space-y-2 pl-5">
+            {result.research_sources.map((source) => (
+              <li key={source.id} className="pl-1">
+                <a href={source.url} target="_blank" rel="noreferrer" className="font-medium text-cyan-200 underline decoration-cyan-500/50 underline-offset-2 hover:text-white">
+                  {source.title}
+                </a>
+                {source.published_date && <span className="ml-1 text-zinc-400">({source.published_date})</span>}
+                <div className="break-all text-[10px] text-zinc-400">{source.url}</div>
+              </li>
+            ))}
+          </ol>
+          <p className="text-[11px] text-zinc-400">Sources were retrieved for this document and were not independently verified.</p>
+        </section>
       )}
 
       {/* Warnings if any */}

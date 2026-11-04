@@ -14,6 +14,12 @@ This document records the architectural decisions, trade-offs, and invariants es
 
 ## 2. Architecture & Subsystem Decisions
 
+### Document length and research
+- DOCX and PDF-reference generation accepts either an approximate 1–50 page target or a Low/Medium/High detail preset. Presets target about 2/5/10 pages; Medium is the default. Presentations retain a separate slide target.
+- Document creation uses a bounded outline-and-section pipeline. Each section gets deterministic checks plus a structured quality-review call covering relevance, goal completeness, coherence, repetition, and unsupported factual claims. A failed section gets one targeted revision; failed or incomplete plans return an error. This adds one review call per section, so long documents trade additional provider time and cost for a quality gate.
+- Tavily research is opt-in and server-side. Its key never reaches the browser. Returned metadata is the only source of numbered citations; the document and UI list sources that were actually cited, while the result panel shows retrieved source records and a warning that search results were not independently verified.
+- Actual pagination varies by template and rendering software; requested page counts are approximate.
+
 ### CFG & Configuration
 - **Native Async HTTP Over Library Wrapper**: Removed `ollama` Python client package in favor of `httpx` with `respx` mocking. This eliminated orphaned background threads and unhandled socket teardown in async event loops.
 - **Unified Settings**: Standardized all configuration in `backend/app/config.py` using `pydantic-settings`. Guaranteed consistency across `.env.example`, `docker-compose.yml`, and `README.md` via `scripts/check_env_consistency.py`.

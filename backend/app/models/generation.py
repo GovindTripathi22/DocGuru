@@ -40,7 +40,17 @@ class DocumentSection(BaseModel):
     image_query: Optional[str] = None
     image_caption: Optional[str] = None
     image_path: Optional[str] = None
+    citations: List[str] = Field(default_factory=list)
     subsections: List['DocumentSection'] = Field(default_factory=list)
+
+
+class ResearchSource(BaseModel):
+    id: str
+    title: str
+    url: str
+    snippet: str = ""
+    published_date: Optional[str] = None
+    score: Optional[float] = None
 
 
 class ThemeOverride(BaseModel):
@@ -76,6 +86,9 @@ class DocumentPlan(BaseModel):
     applied_rules: List[str] = Field(default_factory=list)
     edit_mode: Optional[str] = "create"
     theme_overrides: List[ThemeOverride] = Field(default_factory=list)
+    research_sources: List[ResearchSource] = Field(default_factory=list)
+    generation_mode: str = "live"
+    warnings: List[str] = Field(default_factory=list)
 
 
 class SlidePlan(BaseModel):
@@ -97,18 +110,22 @@ class PresentationPlan(BaseModel):
     presentation_title: str
     audience: Optional[str] = "General / Professional"
     slides: List[SlidePlan] = Field(default_factory=list)
+    generation_mode: str = "live"
+    warnings: List[str] = Field(default_factory=list)
 
 
 class GenerationRequest(BaseModel):
     template_id: str
-    prompt: str
+    prompt: str = Field(min_length=1, max_length=4000)
     document_type: Literal["docx", "pptx", "pdf"] = "docx"
     mode: Literal["create_document", "create_presentation", "edit_document", "edit_presentation"] = "create_document"
     target_sections: Optional[int] = Field(default=None, ge=1, le=50)
     target_pages: Optional[int] = Field(default=None, ge=1, le=50)
+    detail_level: Optional[Literal["low", "medium", "high"]] = None
     target_slides: Optional[int] = Field(default=None, ge=1, le=50)
     target_pages_or_slides: Optional[int] = Field(default=None, ge=1, le=50)  # Deprecated alias
-    custom_instructions: Optional[str] = None
+    custom_instructions: Optional[str] = Field(default=None, max_length=1000)
+    research_enabled: bool = False
     include_images: bool = True
     image_mode: Literal["off", "search", "placeholder", "auto", "generate"] = "search"
     template_mode: Literal["auto", "fill", "append", "replace_body"] = "auto"
@@ -117,6 +134,37 @@ class GenerationRequest(BaseModel):
     edit_target_index: Optional[int] = None
     edit_target_heading: Optional[str] = None
     edit_action: Optional[Literal["append", "insert_after", "replace", "update_text"]] = None
+
+    @model_validator(mode="after")
+    def validate_length_and_research_options(self) -> "GenerationRequest":
+        if self.target_pages is not None and self.detail_level is not None:
+            raise ValueError("Choose either target_pages or detail_level, not both.")
+
+        if self.target_pages_or_slides is not None:
+            if self.document_type == "pptx":
+                if self.target_slides is not None and self.target_slides != self.target_pages_or_slides:
+                    raise ValueError("target_slides conflicts with the legacy target_pages_or_slides value.")
+                self.target_slides = self.target_slides or self.target_pages_or_slides
+            else:
+                if self.target_pages is not None and self.target_pages != self.target_pages_or_slides:
+                    raise ValueError("target_pages conflicts with the legacy target_pages_or_slides value.")
+                if self.detail_level is not None:
+                    raise ValueError("Use target_pages or detail_level with the legacy combined field, not both.")
+                self.target_pages = self.target_pages or self.target_pages_or_slides
+
+        if self.document_type == "pptx":
+            if self.target_pages is not None or self.detail_level is not None or self.target_sections is not None:
+                raise ValueError("Presentations use target_slides; page and detail targets apply to documents.")
+            if self.research_enabled:
+                raise ValueError("Web research is currently available for documents only.")
+        elif self.target_slides is not None:
+            raise ValueError("target_slides applies only to presentations.")
+
+        if self.detail_level is None and self.target_pages is None and self.document_type != "pptx":
+            self.detail_level = "medium"
+        if self.research_enabled and self.mode.startswith("edit"):
+            raise ValueError("Research mode is available for new documents, not edit requests.")
+        return self
 
 
 class ComponentResult(BaseModel):

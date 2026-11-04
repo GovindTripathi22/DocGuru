@@ -154,8 +154,10 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
             heading_level = 1
 
         # Paragraphs
-        raw_paras = sec.get("paragraphs") or []
-        if isinstance(raw_paras, str):
+        raw_paras = sec.get("paragraphs")
+        if raw_paras is None:
+            raw_paras = []
+        elif not isinstance(raw_paras, (list, tuple)):
             raw_paras = [raw_paras]
         paragraphs = []
         for p in raw_paras:
@@ -166,8 +168,10 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 total_content_elements += 1
 
         # Bullet points
-        raw_bullets = sec.get("bullet_points") or []
-        if isinstance(raw_bullets, str):
+        raw_bullets = sec.get("bullet_points")
+        if raw_bullets is None:
+            raw_bullets = []
+        elif not isinstance(raw_bullets, (list, tuple)):
             raw_bullets = [raw_bullets]
         bullet_points = []
         for b in raw_bullets:
@@ -181,15 +185,31 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
         table_dict = None
         raw_table = sec.get("table")
         if isinstance(raw_table, dict):
-            headers = [sanitize_text(h, max_len=300, field_name="table_header") for h in (raw_table.get("headers") or [])]
-            raw_rows = raw_table.get("rows") or []
+            raw_headers = raw_table.get("headers")
+            if raw_headers is None:
+                raw_headers = []
+            elif not isinstance(raw_headers, (list, tuple)):
+                raw_headers = [raw_headers]
+            headers = [sanitize_text(h, max_len=300, field_name="table_header") for h in raw_headers]
+            raw_rows = raw_table.get("rows")
+            if raw_rows is None:
+                raw_rows = []
+            elif not isinstance(raw_rows, (list, tuple)):
+                raw_rows = [raw_rows]
             # Cap table to 30 rows x 12 cols
             headers = headers[:12]
             clean_rows = []
-            for r in raw_rows[:30]:
+            for r in list(raw_rows)[:30]:
                 if isinstance(r, list):
                     clean_row = [sanitize_text(c, max_len=300, field_name="table_cell") for c in r[:12]]
                     clean_rows.append(clean_row)
+                    total_content_elements += 1
+                elif isinstance(r, tuple):
+                    clean_row = [sanitize_text(c, max_len=300, field_name="table_cell") for c in r[:12]]
+                    clean_rows.append(clean_row)
+                    total_content_elements += 1
+                else:
+                    clean_rows.append([sanitize_text(r, max_len=300, field_name="table_cell")])
                     total_content_elements += 1
             if headers or clean_rows:
                 caption = sanitize_text(raw_table.get("caption") or "Data Table", max_len=200, field_name="table_caption")

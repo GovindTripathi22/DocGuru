@@ -6,6 +6,8 @@ import { PromptData } from "@/types/template";
 
 interface PromptInputProps {
   documentType: "docx" | "pptx" | "pdf";
+  researchAvailable: boolean;
+  researchCapabilityKnown: boolean;
   onGenerate: (data: PromptData) => void;
   isGenerating: boolean;
   extractedRules?: string[];
@@ -14,6 +16,8 @@ interface PromptInputProps {
 
 export function PromptInput({
   documentType,
+  researchAvailable,
+  researchCapabilityKnown,
   onGenerate,
   isGenerating,
   extractedRules,
@@ -23,7 +27,11 @@ export function PromptInput({
   const [mode, setMode] = useState<string>(
     documentType === "pptx" ? "create_presentation" : "create_document"
   );
-  const [targetCount, setTargetCount] = useState<number | string>(documentType === "pptx" ? 5 : 4);
+  const [targetSlides, setTargetSlides] = useState<number | string>(5);
+  const [lengthMode, setLengthMode] = useState<"pages" | "detail">("detail");
+  const [targetPages, setTargetPages] = useState<number | string>(5);
+  const [detailLevel, setDetailLevel] = useState<"low" | "medium" | "high">("medium");
+  const [researchEnabled, setResearchEnabled] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const [includeImages, setIncludeImages] = useState(true);
   const [imageMode, setImageMode] = useState<"search" | "generate" | "auto">("auto");
@@ -80,12 +88,18 @@ export function PromptInput({
     if (e) e.preventDefault();
     if (!prompt.trim() || isGenerating) return;
 
-    const finalTargetCount = typeof targetCount === "number" ? targetCount : parseInt(targetCount, 10) || (documentType === "pptx" ? 5 : 4);
+    const finalTargetSlides = typeof targetSlides === "number" ? targetSlides : parseInt(targetSlides, 10) || 5;
+    const finalTargetPages = typeof targetPages === "number" ? targetPages : parseInt(targetPages, 10) || 5;
 
     onGenerate({
       prompt: prompt.trim(),
       mode,
-      targetPagesOrSlides: finalTargetCount,
+      ...(documentType === "pptx"
+        ? { targetSlides: finalTargetSlides }
+        : lengthMode === "pages"
+          ? { targetPages: finalTargetPages }
+          : { detailLevel }),
+      researchEnabled: documentType !== "pptx" && mode.startsWith("create") && researchEnabled,
       customInstructions: customInstructions.trim() || undefined,
       includeImages,
       imageMode,
@@ -248,6 +262,107 @@ export function PromptInput({
         </div>
       </div>
 
+      {documentType === "pptx" ? (
+        <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <label htmlFor="target-slides" className="block text-xs font-semibold text-zinc-200">Target slide count</label>
+          <input
+            id="target-slides"
+            type="number"
+            min={1}
+            max={50}
+            value={targetSlides}
+            onChange={(e) => setTargetSlides(e.target.value === "" ? "" : parseInt(e.target.value, 10) || 1)}
+            className="mt-2 w-full max-w-xs rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
+          />
+        </div>
+      ) : mode.startsWith("create") && (
+        <div className="mt-4 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <fieldset>
+            <legend className="text-xs font-semibold text-zinc-200">Document length</legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(["detail", "pages"] as const).map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  aria-pressed={lengthMode === choice}
+                  onClick={() => setLengthMode(choice)}
+                  className={lengthMode === choice
+                    ? "rounded-lg border border-cyan-400 bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-zinc-950"
+                    : "rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:border-zinc-500"}
+                >
+                  {choice === "pages" ? "Choose pages" : "Choose detail"}
+                </button>
+              ))}
+            </div>
+            {lengthMode === "pages" ? (
+              <div className="mt-3">
+                <label htmlFor="target-pages" className="block text-xs text-zinc-300">Approximate page count (1–50)</label>
+                <input
+                  id="target-pages"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={targetPages}
+                  onChange={(e) => setTargetPages(e.target.value === "" ? "" : parseInt(e.target.value, 10) || 1)}
+                  className="mt-1.5 w-full max-w-xs rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
+                />
+                <p className="mt-1.5 text-[11px] text-zinc-400">This is an approximate content target. Actual pagination varies by template and rendering software.</p>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <span className="block text-xs text-zinc-300">Detail level</span>
+                <div className="mt-1.5 grid grid-cols-3 gap-2">
+                  {([
+                    ["low", "Low", "~2 pages"],
+                    ["medium", "Medium", "~5 pages"],
+                    ["high", "High", "~10 pages"],
+                  ] as const).map(([value, label, estimate]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={detailLevel === value}
+                      onClick={() => setDetailLevel(value)}
+                      className={detailLevel === value
+                        ? "rounded-lg border border-cyan-400 bg-cyan-950/50 px-3 py-2 text-left text-cyan-200"
+                        : "rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-zinc-300 hover:border-zinc-500"}
+                    >
+                      <span className="block text-xs font-semibold">{label}</span>
+                      <span className="mt-0.5 block text-[10px] text-zinc-400">{estimate}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-zinc-400">Approximate length only; pagination varies by template and rendering software.</p>
+              </div>
+            )}
+          </fieldset>
+
+          <div className="border-t border-zinc-800 pt-3">
+            <label className={researchAvailable
+              ? "flex cursor-pointer items-start gap-2 text-xs text-zinc-200"
+              : "flex cursor-not-allowed items-start gap-2 text-xs text-zinc-500"}
+            >
+              <input
+                type="checkbox"
+                checked={researchEnabled}
+                disabled={!researchAvailable}
+                onChange={(e) => setResearchEnabled(e.target.checked)}
+                className="mt-0.5 rounded border-zinc-700 bg-zinc-800 text-cyan-500 focus:ring-cyan-400 disabled:opacity-50"
+              />
+              <span>
+                <span className="font-semibold">Research sources</span>
+                <span className="mt-0.5 block text-[11px] text-zinc-400">
+                  {researchAvailable
+                    ? "Optional. Adds citations from retrieved web sources; results are not independently verified."
+                    : researchCapabilityKnown
+                      ? "Unavailable because the backend has no Tavily API key configured."
+                      : "Availability cannot be confirmed until the backend health check succeeds."}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Visual Figure & Image Director Controls */}
       <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -306,24 +421,11 @@ export function PromptInput({
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5"
         >
-          {showAdvanced ? "− Hide generation options" : "+ Show advanced options (sections, surgical theme overrides)"}
+          {showAdvanced ? "− Hide generation options" : "+ Show advanced options"}
         </button>
 
         {showAdvanced && (
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 rounded-xl bg-zinc-900/60 p-4 border border-zinc-800">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300">
-                Target {documentType === "pptx" ? "Slide Count" : "Section Count"}
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={15}
-                value={targetCount}
-                onChange={(e) => setTargetCount(e.target.value === "" ? "" : parseInt(e.target.value, 10) || 1)}
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white focus:border-cyan-400 focus:outline-none"
-              />
-            </div>
+          <div className="mt-3 grid grid-cols-1 gap-4 rounded-xl bg-zinc-900/60 p-4 border border-zinc-800">
             <div>
               <label className="block text-xs font-semibold text-zinc-300">
                 Surgical Theme Override / Special Focus

@@ -14,6 +14,16 @@ DocGuru is an exact template-preserving AI document and presentation generator. 
 2. **Demo Mode** (`MODEL_PROVIDER=demo`): Deterministic, topic-agnostic offline generation for testing and demonstrations. Explicitly marked as demo content throughout UI and outputs.
 3. **Local Mode** (`MODEL_PROVIDER=ollama`): Native async HTTP integration with local Ollama runtime.
 
+## Document length and research
+
+For DOCX and PDF-reference documents, choose an approximate page count from 1 to 50 or a detail preset: Low (~2 pages), Medium (~5 pages, default), or High (~10 pages). Actual pagination varies with the template and rendering software. Presentations use their own slide-count target.
+
+Document plans are built from an outline and independently written sections with bounded concurrency. Each section receives deterministic checks and a structured quality review for relevance, completeness, coherence, repetition, and unsupported factual claims. The review may trigger one targeted revision; unresolved or incomplete output returns a clear error.
+
+This review is a quality aid, not a guarantee of correctness. It does not independently fact-check claims; optional search results are also unverified references.
+
+The optional Research sources control is off by default and is available only when TAVILY_API_KEY is configured. Retrieved sources are treated as untrusted reference data and listed as numbered citations in the document. Search results are not independently verified and do not guarantee factual correctness.
+
 ## Configuration Table
 
 The table below lists all supported configuration variables. All names and defaults match `.env.example`, `docker-compose.yml`, and `backend/app/config.py`.
@@ -32,6 +42,9 @@ The table below lists all supported configuration variables. All names and defau
 | `LLM_THINKING` | `default` | Reasoning mode (`off` or `default`). |
 | `OUTLINE_MAX_TOKENS` | `1200` | Token limit for document outline generation. |
 | `SECTION_MAX_TOKENS` | `1800` | Token limit for per-section generation. |
+| `TAVILY_API_KEY` | empty | Optional Tavily Search API key; enables the opt-in document research control. |
+| `RESEARCH_TIMEOUT_SEC` | `15` | Timeout for optional Tavily research requests in seconds. |
+| `RESEARCH_MAX_SOURCES` | `8` | Maximum number of returned research sources to cite in a document. |
 | `DEBUG` | `false` | Enable verbose debug logging. |
 | `LOG_CONTENT` | `false` | Enable logging of prompt and document content (disabled by default for privacy). |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Allowed CORS origins (wildcard `*` rejected). |

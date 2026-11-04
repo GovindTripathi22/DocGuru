@@ -80,11 +80,16 @@ class DiffValidator:
                         )
                     )
                 else:
+                    original_fingerprint = orig_h[:12] if orig_h else "<missing>"
+                    generated_fingerprint = gen_h[:12] if gen_h else "<missing>"
                     components.append(
                         ComponentResult(
                             name=name,
                             status="changed",
-                            detail=f"Component '{name}' drift detected: original={orig_h[:12]} vs generated={gen_h[:12]}",
+                            detail=(
+                                f"Component '{name}' drift detected: "
+                                f"original={original_fingerprint} vs generated={generated_fingerprint}"
+                            ),
                         )
                     )
                     issues.append(f"Template component '{name}' was modified during generation.")

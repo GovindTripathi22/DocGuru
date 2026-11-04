@@ -3,7 +3,7 @@ import logging
 from .gemma_client import GemmaClient
 
 from ..config import settings
-from ..errors import LLMUnavailable
+from ..errors import AppError, LLMUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,15 @@ class PromptEnhancer:
             res = await self.client.generate_structured_json(
                 system_prompt=system_prompt,
                 user_prompt=user_message,
-                max_tokens=350
+                max_tokens=max(600, settings.OUTLINE_MAX_TOKENS)
             )
             if isinstance(res, dict) and "enhanced_prompt" in res and res["enhanced_prompt"]:
                 return str(res["enhanced_prompt"]).strip()
+        except AppError:
+            raise
         except Exception as e:
-            logger.warning("AI Prompt enhancement error: %s", e)
-            raise LLMUnavailable(f"Prompt enhancement service failed: {e}") from e
+            logger.warning("AI prompt enhancement request failed (%s)", type(e).__name__)
+            raise LLMUnavailable("Prompt enhancement request failed. Retry or edit the prompt directly.") from e
 
         raise LLMUnavailable("Prompt enhancer received an invalid response from the AI model.")
 

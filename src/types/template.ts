@@ -81,10 +81,22 @@ export interface GenerationPlan {
 export interface PromptData {
   prompt: string;
   mode: string;
-  targetPagesOrSlides?: number;
+  targetPages?: number;
+  detailLevel?: "low" | "medium" | "high";
+  targetSlides?: number;
+  researchEnabled?: boolean;
   customInstructions?: string;
   includeImages?: boolean;
   imageMode?: "search" | "generate" | "auto";
+}
+
+export interface ResearchSource {
+  id: string;
+  title: string;
+  url: string;
+  snippet?: string;
+  published_date?: string | null;
+  score?: number | null;
 }
 
 export interface TemplateUploadResponse {

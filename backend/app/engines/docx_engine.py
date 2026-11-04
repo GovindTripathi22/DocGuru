@@ -447,6 +447,11 @@ class DocxEngine:
                     target_p._p.addnext(p_new._p)
                     target_p = p_new
 
+        if plan.generation_mode == "demo":
+            doc.add_paragraph(
+                "DEMO CONTENT — not AI generated. Treat this output as a scaffold and validate details before use."
+            )
+
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         doc.save(output_path)
         return output_path
@@ -457,6 +462,7 @@ class DocxEngine:
         section: DocumentSection,
         saved_table_xmls: List[Any],
         warnings: Optional[List[str]] = None,
+        source_numbers: Optional[Dict[str, int]] = None,
     ) -> None:
         if section.title:
             self.insert_heading(
@@ -489,7 +495,18 @@ class DocxEngine:
             )
 
         for sub in section.subsections:
-            self._render_section(locked_doc, sub, saved_table_xmls, warnings=warnings)
+            self._render_section(
+                locked_doc,
+                sub,
+                saved_table_xmls,
+                warnings=warnings,
+                source_numbers=source_numbers,
+            )
+
+        valid_numbers = [source_numbers[item] for item in section.citations if source_numbers and item in source_numbers]
+        if valid_numbers:
+            markers = " ".join(f"[{number}]" for number in valid_numbers)
+            self.insert_paragraph(locked_doc, markers)
 
     def generate_from_plan(
         self,
@@ -532,16 +549,43 @@ class DocxEngine:
         # 2. Body inhabitation strategy
         is_structured = len(doc.sections) > 1 or len(doc.paragraphs) > 20 or replacements_count > 0
 
+        def flatten_sections(sections: List[DocumentSection]) -> List[DocumentSection]:
+            flattened = []
+            for item in sections:
+                flattened.append(item)
+                flattened.extend(flatten_sections(item.subsections))
+            return flattened
+
+        cited_source_ids = {
+            citation
+            for section in flatten_sections(plan.sections)
+            for citation in section.citations
+        }
+        referenced_sources = [source for source in plan.research_sources if source.id in cited_source_ids]
+        source_numbers = {source.id: index for index, source in enumerate(referenced_sources, start=1)}
+
         if template_mode == "fill":
             # Fill mode: keep existing structure, placeholders already replaced
             saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
             for s in plan.sections:
-                self._render_section(locked_doc, s, saved_table_xmls, warnings=warnings)
+                self._render_section(
+                    locked_doc,
+                    s,
+                    saved_table_xmls,
+                    warnings=warnings,
+                    source_numbers=source_numbers,
+                )
         elif template_mode == "append" or (template_mode == "auto" and is_structured and replacements_count == 0 and not body_anchor_index):
             # Append mode: keep all existing body content, append new content before final sectPr
             saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
             for s in plan.sections:
-                self._render_section(locked_doc, s, saved_table_xmls, warnings=warnings)
+                self._render_section(
+                    locked_doc,
+                    s,
+                    saved_table_xmls,
+                    warnings=warnings,
+                    source_numbers=source_numbers,
+                )
         else:
             # Clear or replace body after anchor
             saved_table_xmls = self.clear_body_content_preserving_structure(doc)
@@ -552,15 +596,37 @@ class DocxEngine:
 
             # Render sections
             for idx, section in enumerate(plan.sections):
-                self._render_section(locked_doc, section, saved_table_xmls, warnings=warnings)
+                self._render_section(
+                    locked_doc,
+                    section,
+                    saved_table_xmls,
+                    warnings=warnings,
+                    source_numbers=source_numbers,
+                )
                 # D13 / DOCX-07: No forced page breaks between sections unless explicitly configured
                 if settings.PAGE_BREAK_BETWEEN_SECTIONS and idx < len(plan.sections) - 1:
                     doc.add_page_break()
 
-            # DOCX-01: Render conclusion as a final section with heading "Conclusion"
-            if plan.conclusion:
-                self.insert_heading(locked_doc, "Conclusion", requested_style="Heading 1", warnings=warnings)
-                self.insert_paragraph(locked_doc, plan.conclusion)
+        # Shared footer content must appear in fill, append, and replace modes.
+        if plan.conclusion:
+            self.insert_heading(locked_doc, "Conclusion", requested_style="Heading 1", warnings=warnings)
+            self.insert_paragraph(locked_doc, plan.conclusion)
+
+        if referenced_sources:
+            self.insert_heading(locked_doc, "References", requested_style="Heading 1", warnings=warnings)
+            for source in referenced_sources:
+                number = source_numbers[source.id]
+                published = f" Published: {source.published_date}." if source.published_date else ""
+                self.insert_paragraph(
+                    locked_doc,
+                    f"[{number}] {source.title}.{published} {source.url}",
+                )
+
+        if plan.generation_mode == "demo":
+            self.insert_paragraph(
+                locked_doc,
+                "DEMO CONTENT — not AI generated. Treat this output as a scaffold and validate details before use.",
+            )
 
         # 3. Apply user overrides if specified (DOCX-05)
         if overrides:

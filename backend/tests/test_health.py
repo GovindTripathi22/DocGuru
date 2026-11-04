@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import PropertyMock, patch
 
 from backend.app.main import app
-from backend.app.config import Settings
+from backend.app.config import Settings, settings
 
 
 def test_health_live_endpoint():
@@ -44,3 +44,14 @@ def test_api_health_endpoint():
     assert "time" in data
     assert "capabilities" in data
     assert isinstance(data["capabilities"], dict)
+
+
+def test_api_health_reports_research_key_availability(monkeypatch):
+    client = TestClient(app)
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    without_key = client.get("/api/health")
+    assert without_key.json()["capabilities"]["research"] is False
+
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "configured")
+    with_key = client.get("/api/health")
+    assert with_key.json()["capabilities"]["research"] is True

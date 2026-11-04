@@ -28,6 +28,7 @@ const STAGE_LABELS: Record<string, string> = {
   queued: "Queued for processing",
   analyzing: "Analyzing template structure & invariants",
   planning_outline: "Synthesizing document outline",
+  researching: "Finding research sources",
   writing_sections: "Writing content sections",
   fetching_images: "Resolving and verifying visual assets",
   assembling: "Applying template inheritance",

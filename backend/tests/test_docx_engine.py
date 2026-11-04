@@ -3,7 +3,7 @@ from pathlib import Path
 from docx import Document
 from backend.app.analyzer.docx_analyzer import DocxAnalyzer
 from backend.app.engines.docx_engine import DocxEngine
-from backend.app.models.generation import DocumentPlan, DocumentSection, TableData
+from backend.app.models.generation import DocumentPlan, DocumentSection, ResearchSource, TableData
 
 def test_docx_load_and_spec_extraction(sample_docx_template: Path):
     analyzer = DocxAnalyzer()
@@ -83,6 +83,49 @@ def test_docx_template_content_replacement(sample_docx_template: Path, tmp_path:
     assert table.cell(0, 0).text == "Evaluation Metric"
     assert table.cell(1, 0).text == "Elo Rating"
     assert table.cell(1, 1).text == "3000"
+
+
+def test_research_citations_and_references_render_from_returned_metadata(sample_docx_template: Path, tmp_path: Path):
+    analyzer = DocxAnalyzer()
+    spec = analyzer.analyze(str(sample_docx_template))
+    engine = DocxEngine()
+    locked_doc = engine.load_template(str(sample_docx_template), spec)
+    plan = DocumentPlan(
+        title="Climate Adaptation",
+        sections=[
+            DocumentSection(
+                title="Planning",
+                heading_style="Heading 1",
+                paragraphs=["Climate adaptation planning should assess local needs and constraints."],
+                citations=["S1"],
+            )
+        ],
+        conclusion="Use the stated goals to guide next steps.",
+        research_sources=[
+            ResearchSource(
+                id="S1",
+                title="Climate Adaptation Guidance",
+                url="https://example.org/climate-adaptation",
+                published_date="2025-01-02",
+            ),
+            ResearchSource(
+                id="S2",
+                title="Uncited Source",
+                url="https://example.org/unused",
+            ),
+        ],
+    )
+    output_path = tmp_path / "cited_document.docx"
+
+    engine.generate_from_plan(locked_doc, plan, str(output_path), template_mode="replace_body")
+
+    generated = Document(str(output_path))
+    text = "\n".join(paragraph.text for paragraph in generated.paragraphs)
+    assert "[1]" in text
+    assert "References" in text
+    assert "[1] Climate Adaptation Guidance. Published: 2025-01-02." in text
+    assert "https://example.org/climate-adaptation" in text
+    assert "Uncited Source" not in text
 
 
 def test_docx_generation_without_heading_styles(tmp_path: Path):

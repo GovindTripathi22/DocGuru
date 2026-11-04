@@ -168,6 +168,7 @@ async def health_check():
             "preview": settings.PREVIEW_ENABLED,
             "edit_pptx": True,
             "max_upload_mb": settings.MAX_UPLOAD_MB,
+            "research": bool(settings.TAVILY_API_KEY.strip()),
         },
     }
 

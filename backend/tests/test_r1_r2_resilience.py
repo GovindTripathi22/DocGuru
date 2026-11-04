@@ -159,9 +159,9 @@ def test_no_asyncio_to_thread_in_gemma_client():
 # ==============================================================================
 
 @pytest.mark.asyncio
-async def test_prompt_enhancer_passes_max_tokens_350():
+async def test_prompt_enhancer_reserves_at_least_600_tokens():
     """
-    Verify PromptEnhancer.enhance passes max_tokens=350 to generate_structured_json.
+    Verify PromptEnhancer.enhance reserves at least 600 output tokens.
     """
     enhancer = PromptEnhancer()
     mock_generate = AsyncMock(return_value={"enhanced_prompt": "Synthesized High-Impact Prompt"})
@@ -171,28 +171,49 @@ async def test_prompt_enhancer_passes_max_tokens_350():
 
     mock_generate.assert_awaited_once()
     call_kwargs = mock_generate.await_args.kwargs
-    assert call_kwargs["max_tokens"] == 350
+    assert call_kwargs["max_tokens"] >= 600
     assert result == "Synthesized High-Impact Prompt"
 
 
 @pytest.mark.asyncio
-async def test_document_planner_docx_passes_max_tokens_1500():
-    """
-    Verify DocumentPlanner.plan_document passes max_tokens=1500 to generate_structured_json.
-    """
+async def test_document_planner_docx_uses_outline_and_bounded_section_budgets():
+    """Document planning uses a separate outline and per-section token budget."""
     planner = DocumentPlanner()
-    mock_generate = AsyncMock(return_value={
-        "title": "Quantum Computing Architectural Analysis",
-        "sections": [
-            {
-                "title": "Executive Summary",
-                "heading_style": "Heading 1",
-                "paragraphs": ["Detailed architectural breakdown."],
-                "bullets": []
+    calls = []
+
+    async def scripted_generate(*, system_prompt, user_prompt, max_tokens, **_kwargs):
+        calls.append((system_prompt, user_prompt, max_tokens))
+        if "DOCUMENT_OUTLINE" in system_prompt:
+            count = int(system_prompt.split("Return exactly ", 1)[1].split(" ordered sections", 1)[0])
+            return {
+                "title": "Quantum Computing Architectural Analysis",
+                "sections": [
+                    {"title": f"Architecture {index + 1}", "goal": "Analyze quantum computing architecture"}
+                    for index in range(count)
+                ],
             }
+        if "DOCUMENT_SECTION_QUALITY" in system_prompt:
+            return {"passed": True, "issues": []}
+        title = user_prompt.split("Section title:", 1)[1].split("\nGoal:", 1)[0]
+        aspects = [
+            "processor design", "system constraints", "error handling", "circuit execution", "data movement",
+            "control software", "resource coordination", "reliability needs", "measurement strategy",
+            "verification work", "workflow design", "capacity planning", "integration choices", "security needs",
+            "testing strategy", "team responsibilities", "operational risks", "maintenance practices",
+            "implementation order", "decision criteria",
         ]
-    })
-    planner.client.generate_structured_json = mock_generate
+        body = " ".join(
+            f"Quantum computing architecture should examine {aspect}, explain design tradeoffs, and identify the evidence needed for a decision."
+            for aspect in aspects
+        )
+        return {"section": {
+            "title": title,
+            "paragraphs": [body],
+            "bullets": [],
+            "conclusion": "Quantum computing architecture should be evaluated against the stated goals and constraints.",
+        }}
+
+    planner.client.generate_structured_json = scripted_generate
 
     template_spec = TemplateSpecification(
         filename="report.docx",
@@ -205,11 +226,18 @@ async def test_document_planner_docx_passes_max_tokens_1500():
         template_spec=template_spec
     )
 
-    mock_generate.assert_awaited_once()
-    call_kwargs = mock_generate.await_args.kwargs
-    assert call_kwargs["max_tokens"] == 1500
+    assert len(calls) == 15
+    assert "DOCUMENT_OUTLINE" in calls[0][0]
+    assert calls[0][2] >= 1200
+    assert all("DOCUMENT_SECTION" in call[0] for call in calls[1:])
+    writer_calls = [call for call in calls[1:] if "DOCUMENT_SECTION_QUALITY" not in call[0]]
+    review_calls = [call for call in calls[1:] if "DOCUMENT_SECTION_QUALITY" in call[0]]
+    assert len(writer_calls) == 7
+    assert len(review_calls) == 7
+    assert all(call[2] >= 1800 for call in writer_calls)
+    assert all(call[2] >= 900 for call in review_calls)
     assert plan.title == "Quantum Computing Architectural Analysis"
-    assert len(plan.sections) >= 1
+    assert len(plan.sections) == 7
 
 
 @pytest.mark.asyncio

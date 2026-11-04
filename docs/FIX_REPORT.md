@@ -28,11 +28,12 @@
 | ID | Status | Evidence | Commit | Notes |
 | --- | --- | --- | --- | --- |
 | LLM-01 | FIXED | `test_fail_safe.py`, `backend/app/llm/` | c5800be | Unconfigured live provider returns 503 `LLM_NOT_CONFIGURED`; zero silent fallbacks to demo text. |
+| LLM-02 | FIXED | `test_generation_length_and_research.py` | current work | Replaced one whole-document cap with outline, bounded section writing, per-section quality review, truncation recovery, and completion errors. |
 | LLM-03 | FIXED | `test_demo_provider.py` | c5800be | Dynamic, topic-derived demo mode synthesizing content based on prompt keywords. |
 | LLM-04 | FIXED | `test_normalize.py` | c5800be | Prompt normalization handling control characters and malformed inputs. |
 | LLM-05 | FIXED | `test_injection_quarantine.py` | c5800be | Prompt injection attempts quarantined without overriding document style invariants. |
 | LLM-06 | FIXED | `backend/app/llm/providers/` | c5800be | Unified asynchronous provider implementations for Google AI, Ollama, and Demo. |
-| LLM-08 | FIXED | `test_r1_r2_resilience.py` | c5800be | Structured JSON output parsing and strict token cap enforcement (350 enhance, 1500 docx, 1000 pptx). |
+| LLM-08 | FIXED | `test_injection_quarantine.py`, `test_generation_length_and_research.py` | c5800be + current work | Structured JSON and untrusted template/source boundaries; document output budgets are now staged per outline/section/review call rather than one whole-document cap. |
 | LLM-09 | FIXED | `test_r1_r2_resilience.py` | c5800be | Request timeouts and shielded socket closure preventing socket leaks. |
 
 ### Phase 3: Template Invariants & Validation
@@ -75,6 +76,7 @@
 | FE-02 | FIXED | `ProgressPanel.tsx` | 39ff829 | Dynamic job progress polling replacing hardcoded interval timers. |
 | FE-03 | FIXED | `ResultPanel.tsx` | 39ff829 | Component verification table displaying real OpenXML validation results. |
 | FE-04 | FIXED | `Header.tsx`, `ModeBanner.tsx` | 39ff829 | Real-time health model status polling and dynamic demo mode banner. |
+| FE-10 | PARTIAL | `npm run test:frontend`, `src/lib/generation-request.test.mjs` | current work | Five request-builder tests pass; React component, browser end-to-end, and axe accessibility tests from the full work order are not present. |
 | FE-08 | FIXED | `src/app/layout.tsx` | 39ff829 | Offline fonts; removed `next/font/google` remote font network requests. |
 | FE-09 | FIXED | `src/lib/backend.ts`, API routes | 39ff829 | Session signing, API key forwarding, and streaming file download handling. |
 
@@ -82,7 +84,8 @@
 | ID | Status | Evidence | Commit | Notes |
 | --- | --- | --- | --- | --- |
 | OPS-03 | FIXED | `Dockerfile.backend`, `Dockerfile.frontend`, `docker-compose.yml` | 584225c | Non-root users (`docguru` UID 10001, `node` UID 1000), `tini` init, `no-new-privileges:true`. |
-| OPS-05 | FIXED | `.github/workflows/ci.yml` | 584225c | Complete GitHub Actions workflow for backend tests, env consistency, lint, copy check, and build. |
+| OPS-04 | PARTIAL | `package.json` | current work | Separate `dev` and `dev:backend` scripts exist; the requested `dev:all` command and Makefile targets are absent. |
+| OPS-05 | PARTIAL | `.github/workflows/ci.yml`, local Ruff/mypy gates | 584225c + current work | CI covers basic backend/frontend gates, but the full requested security, type, coverage, Docker, and Playwright matrix is incomplete. Current local Ruff and mypy checks fail as recorded below. |
 | DEAD-01 | FIXED | Frontend & backend file audit | 584225c | Obsolete components (`DiffViewer.tsx`, `GenerationPreview.tsx`) and legacy imports removed. |
 
 ### Phase 10: Documentation & Reports
@@ -92,13 +95,56 @@
 | DOC-02 | FIXED | `docs/PRIVACY.md` | 813ce4c | Data lifecycle, retention policies, prompt quarantine, and log content privacy. |
 | DOC-03 | FIXED | `docs/MANUAL_QA.md` | 813ce4c | Step-by-step human verification checklist for Word, PowerPoint, Docker, and real LLMs. |
 | DOC-04 | FIXED | `docs/DECISIONS.md`, `README.md` | 813ce4c | Architectural decision record and comprehensive project README update. |
+| TEST-01/02 | PARTIAL | `backend/tests/`, `src/lib/generation-request.test.mjs` | current work | The 156-test backend suite and five frontend request tests pass. Coverage measured 73.94%, below the 80% target; the Hypothesis matrix, Playwright, and axe gates remain incomplete. |
 
 ---
 
-## 3. Final Verification Status
-- **Pytest Suite**: 121 / 121 tests pass with 0 failures (`python -m pytest backend/tests -q`).
-- **Environment Consistency**: 31 / 31 variables verified (`python scripts/check_env_consistency.py`).
-- **Copy Check**: 0 banned phrases detected (`node scripts/check_copy.mjs`).
-- **TypeScript**: 0 errors (`npx tsc --noEmit`).
-- **ESLint**: 0 errors, 0 warnings (`npm run lint`).
-- **Production Build**: 0 errors (`npm run build`).
+## 3. Current Generation Remediation (2026-11-04)
+
+The earlier final verification counts (121 tests / 31 environment variables) were stale and are superseded by the results below.
+
+**Status summary:** This continuation has 7 fixed feature items: document length, staged planning, section review, shared concurrency, research, demo-table behavior, and validator error handling. Four broader work-order areas remain PARTIAL: OPS-04, OPS-05, FE-10, and TEST-01/02. Six external checks remain NOT VERIFIED: live Google, live Tavily, Word, PowerPoint, Docker/deployment, and a network-disabled build.
+
+| Work item | Status | Evidence | Notes |
+| --- | --- | --- | --- |
+| DOCX/PDF length choices | FIXED | `test_document_length_targets_are_exclusive_and_legacy_target_maps_to_pages`, `test_detail_presets_and_page_targets_create_monotonic_word_budgets`, `generation-request.test.mjs` | Numeric page target or Low/Medium/High; Medium default; PPTX remains slide-count based. |
+| Staged long-document planning | FIXED | `test_document_planner_uses_outline_then_section_calls_and_reports_real_progress`, `test_twelve_sections_use_bounded_writer_and_quality_calls_with_real_progress`, `test_truncated_outline_is_retried_and_empty_outline_is_rejected` | Outline then bounded section writing and quality-review calls; incomplete or empty plans fail explicitly. |
+| Quality review and one repair | FIXED | `test_failed_structured_quality_review_gets_one_targeted_repair`, `test_unsupported_numerical_claim_gets_one_targeted_section_repair` | Deterministic checks plus structured relevance, completeness, coherence, repetition, and evidence-discipline review. One targeted repair maximum. This is not external fact verification. |
+| Shared provider concurrency | FIXED | `test_provider_calls_obey_global_concurrency_limit_without_blocking_event_loop`, `scripts/verify_concurrency_resilience.py` | Shared per-event-loop provider cap; scripted check: 20 calls in 0.120s, max active 3, heartbeat gap 0.031s. |
+| Optional Tavily research | FIXED (mocked) | `test_tavily_search_returns_validated_citable_sources`, `test_tavily_selects_highest_scoring_sources_first`, `test_tavily_opt_in_without_key_fails_clearly`, `test_tavily_search_failure_does_not_silently_downgrade`, `test_research_plan_citations_are_limited_to_returned_sources` | Opt-in, server-side POST, source IDs restricted to returned records, actionable failures, and result warnings. Live provider remains NOT VERIFIED. |
+| Demo table request and PPTX template preservation | FIXED | `test_demo_section_honors_explicit_comparison_table_request_without_fabricated_metrics`, `test_e2e_full_lifecycle_docx_pipeline`, PPTX generation/validation E2E tests | Demo output now honors an explicit comparison-table request using an evidence-first framework; disclaimer stays in warnings rather than creating a notes master/theme part. |
+| Legacy missing-fingerprint validator crash | FIXED | `test_validator_reports_missing_fingerprint_component_without_crashing` | Missing component hashes are reported safely instead of raising during validation. |
+
+## 4. Final Verification Output
+
+- `python -m pytest backend/tests -q` — **156 passed** (`82.51s`).
+- `python -m pytest backend/tests -q --cov=backend/app --cov-report=term --cov-fail-under=80` — **156 passed**, coverage gate failed at **73.94%** (required 80%; `131.55s`).
+- `python -m pytest backend/tests/test_generation_length_and_research.py backend/tests/regression/test_llm_failure_modes.py backend/tests/test_r1_r2_resilience.py backend/tests/test_e2e_workflows.py::test_e2e_full_lifecycle_docx_pipeline -q` — **35 passed** (`16.60s`) after the final planner initialization adjustment.
+- `python scripts/verify_concurrency_resilience.py` — **PASS**: 20 scripted calls in 0.120s; max active 3; event-loop gap 0.031s.
+- `npx tsc --noEmit` — **PASS**, no TypeScript errors.
+- `npm run lint` — **PASS**, no ESLint output or warnings.
+- `npm run test:frontend` — **PASS**, 5/5 request-payload tests.
+- `npm run build` — **PASS**, Next.js production build completed. This run did not disable network access; the offline-build property is NOT VERIFIED.
+- `python scripts/check_env_consistency.py` — **PASS**, all 34 variables match across `.env.example`, settings, compose, and README.
+- `node scripts/check_copy.mjs` — **PASS**, zero banned phrases.
+- `git diff --check` — **PASS** (Git printed only its Windows LF-to-CRLF notices).
+- `ruff check backend/app/llm/concurrency.py backend/app/ai/generation_budget.py backend/app/research/tavily.py scripts/verify_concurrency_resilience.py --output-format concise` — **PASS**.
+- `ruff check backend/app --statistics` — **NOT PASS**: 696 findings remain across the backend app. The Python Ruff gate is not clean.
+- `mypy backend/app` — **NOT PASS**: 69 errors in 15 files (62 source files checked). Planner budget/outline typing errors introduced in this change were corrected; remaining errors include existing DOCX/PPTX stubs, image typing, and route/validator annotations.
+
+## 5. Not Verified
+
+- **Live Google AI provider** — no live model call was performed. Manual step: set a valid `GEMINI_API_KEY`, set `MODEL_PROVIDER=google_ai`, restart the backend, and complete section 4.2 of `docs/MANUAL_QA.md`.
+- **Live Tavily** — mocked HTTP tests pass, but no live key/provider call was performed. Manual steps: configure `TAVILY_API_KEY`, verify `/api/health` capability, then complete section 0.4–0.6 of `docs/MANUAL_QA.md`, including an unavailable-source case.
+- **Microsoft Word rendering** — desktop Word was not available. Open a generated DOCX and perform section 1 of `docs/MANUAL_QA.md`, including TOC refresh, complex-script text, and print preview.
+- **Microsoft PowerPoint rendering** — desktop PowerPoint was not available. Open generated decks and perform section 2 of `docs/MANUAL_QA.md`, including Sections, repair prompts, slide numbers, branding, complex scripts, and print preview.
+- **Docker / deployment** — Docker and `shellcheck` commands were unavailable. Install Docker Engine/Compose and follow section 3 of `docs/MANUAL_QA.md` for compose validation, build, startup, health, non-root, security options, and deploy dry-run.
+- **Offline production build** — the local build passed, but the network was not disabled. Disconnect network access after dependency installation and rerun `npm run build`.
+
+## 6. Known Limitations and Decisions
+
+- Page counts estimate content volume; actual pagination depends on template and rendering software.
+- The structured section review improves relevance and completeness but cannot guarantee correctness or independently verify facts. Search results are references, not proof.
+- The full backend Ruff check remains failing with 696 findings; the newly introduced concurrency, budget, Tavily, and harness modules pass the targeted Ruff command above.
+- Manual acceptance for live provider calls, desktop Office, Docker deployment, and an actually offline build remains outstanding as listed in `docs/MANUAL_QA.md`.
+- Length, research, and quality-review decisions are recorded in `docs/DECISIONS.md`.

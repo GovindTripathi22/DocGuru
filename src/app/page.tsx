@@ -10,6 +10,7 @@ import { ProgressPanel } from "./components/ProgressPanel";
 import { ResultPanel, GenerationResultData } from "./components/ResultPanel";
 import { Shield } from "lucide-react";
 import { TemplateUploadResponse, PromptData } from "@/types/template";
+import { buildGenerationPayload } from "@/lib/generation-request";
 
 export default function Home() {
   const [templateData, setTemplateData] = useState<TemplateUploadResponse | null>(null);
@@ -17,7 +18,11 @@ export default function Home() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [generationResult, setGenerationResult] = useState<GenerationResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [healthData, setHealthData] = useState<{ mode?: "live" | "demo" | "misconfigured"; model_provider?: string } | null>(null);
+  const [healthData, setHealthData] = useState<{
+    mode?: "live" | "demo" | "misconfigured";
+    model_provider?: string;
+    capabilities?: { research?: boolean };
+  } | null>(null);
 
   const handleTemplateLoaded = (data: TemplateUploadResponse) => {
     setTemplateData(data);
@@ -34,16 +39,9 @@ export default function Home() {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          template_id: templateData.template_id,
-          prompt: data.prompt,
-          document_type: templateData.document_type,
-          mode: data.mode,
-          target_pages_or_slides: data.targetPagesOrSlides,
-          custom_instructions: data.customInstructions,
-          include_images: data.includeImages ?? true,
-          image_mode: data.imageMode ?? "auto",
-        }),
+        body: JSON.stringify(
+          buildGenerationPayload(templateData.template_id, templateData.document_type, data),
+        ),
       });
 
       if (!response.ok) {
@@ -148,6 +146,8 @@ export default function Home() {
             ) : (
               <PromptInput
                 documentType={templateData.document_type}
+                researchAvailable={healthData?.capabilities?.research === true}
+                researchCapabilityKnown={healthData !== null}
                 onGenerate={handlePromptSubmit}
                 isGenerating={false}
                 extractedRules={templateData.extracted_rules || templateData.template_spec?.extracted_rules}

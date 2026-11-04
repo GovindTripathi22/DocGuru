@@ -12,6 +12,7 @@ interface HealthData {
   model_name?: string;
   mode?: "live" | "demo" | "misconfigured";
   ready?: boolean;
+  capabilities?: { research?: boolean };
 }
 
 export function Header({ onHealthUpdate }: { onHealthUpdate?: (health: HealthData | null) => void }) {
