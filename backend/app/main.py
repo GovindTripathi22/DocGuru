@@ -1,16 +1,23 @@
+import hmac
+import json
 import logging
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
 
+import anyio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__
 from .config import settings
 from .errors import AppError
+from .jobs import job_manager
+from .middleware import UploadBodyLimitMiddleware
 from .routes.analyze import router as analyze_router
 from .routes.download import router as download_router
 from .routes.enhance import router as enhance_router
@@ -18,10 +25,7 @@ from .routes.generate import router as generate_router
 from .routes.jobs import router as jobs_router
 from .routes.upload import router as upload_router
 from .routes.validate import router as validate_router
-from .jobs import job_manager
 
-import json
-import sys
 
 class JSONLogFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -47,7 +51,9 @@ root_logger.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
 logger = logging.getLogger("backend")
 
 
-def make_error_response(code: str, message: str, request_id: str, http_status: int, details: dict | None = None) -> JSONResponse:
+def make_error_response(
+    code: str, message: str, request_id: str, http_status: int, details: dict | None = None
+) -> JSONResponse:
     content = {
         "error": {
             "code": code,
@@ -57,12 +63,22 @@ def make_error_response(code: str, message: str, request_id: str, http_status: i
         },
         "detail": message,
     }
-    return JSONResponse(content, status_code=http_status, headers={"X-Request-ID": request_id})
+    headers = {"X-Request-ID": request_id}
+    if details and "retry_after" in details:
+        headers["Retry-After"] = str(details["retry_after"])
+    return JSONResponse(content, status_code=http_status, headers=headers)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    logger.info("startup mode=%s provider=%s model=%s", settings.mode, settings.MODEL_PROVIDER, settings.MODEL_NAME)
+    logger.info(
+        "startup mode=%s provider=%s model=%s",
+        settings.mode,
+        settings.MODEL_PROVIDER,
+        settings.MODEL_NAME,
+    )
+    worker_limiter = anyio.to_thread.current_default_thread_limiter()
+    worker_limiter.total_tokens = settings.WORKER_THREADS
     job_manager.recover_interrupted_jobs()
     job_manager.purge_expired()
     yield
@@ -76,6 +92,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "X-Request-ID", "X-API-Key", "X-Session-Id"],
 )
+app.add_middleware(UploadBodyLimitMiddleware)
 
 
 @app.middleware("http")
@@ -84,12 +101,36 @@ async def request_context(request: Request, call_next):
     request.state.request_id = request_id
     started = time.perf_counter()
     try:
+        configured_keys = [key.strip() for key in settings.API_KEYS.split(",") if key.strip()]
+        protected_api = request.url.path.startswith("/api/") and request.url.path != "/api/health"
+        if protected_api and configured_keys:
+            supplied_key = request.headers.get("X-API-Key", "").encode("utf-8")
+            valid_key = any(
+                hmac.compare_digest(supplied_key, configured_key.encode("utf-8"))
+                for configured_key in configured_keys
+            )
+            if not valid_key:
+                raise AppError(
+                    code="UNAUTHORIZED",
+                    http_status=401,
+                    message="A valid API key is required.",
+                )
+            if not request.headers.get("X-Session-Id", "").strip():
+                raise AppError(
+                    code="SESSION_REQUIRED",
+                    http_status=401,
+                    message="A valid session identifier is required.",
+                )
         response = await call_next(request)
     except AppError as error:
-        response = make_error_response(error.code, error.message, request_id, error.http_status, error.details)
-    except Exception:
+        response = make_error_response(
+            error.code, error.message, request_id, error.http_status, error.details
+        )
+    except Exception:  # noqa: BLE001 - middleware returns the sanitized error envelope for unknown failures
         logger.exception("unhandled request failure", extra={"request_id": request_id})
-        response = make_error_response("INTERNAL_ERROR", "The request could not be completed.", request_id, 500)
+        response = make_error_response(
+            "INTERNAL_ERROR", "The request could not be completed.", request_id, 500
+        )
     response.headers["X-Request-ID"] = request_id
     logger.info(
         "request completed",
@@ -108,9 +149,6 @@ async def request_context(request: Request, call_next):
 async def app_error_handler(request: Request, exc: AppError):
     request_id = getattr(request.state, "request_id", uuid.uuid4().hex)
     return make_error_response(exc.code, exc.message, request_id, exc.http_status, exc.details)
-
-
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -134,10 +172,24 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     request_id = getattr(request.state, "request_id", uuid.uuid4().hex)
-    return make_error_response("VALIDATION_ERROR", "The request body or parameters failed validation.", request_id, 422, {"errors": exc.errors()})
+    return make_error_response(
+        "VALIDATION_ERROR",
+        "The request body or parameters failed validation.",
+        request_id,
+        422,
+        {"errors": exc.errors()},
+    )
 
 
-for router in (upload_router, analyze_router, generate_router, validate_router, download_router, enhance_router, jobs_router):
+for router in (
+    upload_router,
+    analyze_router,
+    generate_router,
+    validate_router,
+    download_router,
+    enhance_router,
+    jobs_router,
+):
     app.include_router(router)
 
 
@@ -148,7 +200,9 @@ async def live_check():
 
 @app.get("/health/ready")
 async def ready_check():
-    return JSONResponse({"ready": settings.ready, "mode": settings.mode}, status_code=200 if settings.ready else 503)
+    return JSONResponse(
+        {"ready": settings.ready, "mode": settings.mode}, status_code=200 if settings.ready else 503
+    )
 
 
 @app.get("/health")
@@ -164,8 +218,9 @@ async def health_check():
         "ready": settings.ready,
         "time": int(time.time()),
         "capabilities": {
-            "images": bool(settings.UNSPLASH_ACCESS_KEY or settings.PEXELS_API_KEY),
-            "preview": settings.PREVIEW_ENABLED,
+            "images": True,
+            "image_placeholders": settings.IMAGE_PLACEHOLDERS,
+            "preview": False,
             "edit_pptx": True,
             "max_upload_mb": settings.MAX_UPLOAD_MB,
             "research": bool(settings.TAVILY_API_KEY.strip()),
@@ -176,4 +231,6 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("backend.app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG)
+    uvicorn.run(
+        "backend.app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG
+    )

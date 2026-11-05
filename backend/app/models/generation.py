@@ -1,8 +1,9 @@
-from typing import Literal, Dict, List, Any, Optional, Union
 import re
-from pydantic import BaseModel, Field, field_validator, model_validator
-from .template_spec import TemplateSpecification
+from typing import Any, Literal
 
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from .template_spec import TemplateSpecification
 
 COLOR_NAMES_TO_HEX = {
     "black": "000000",
@@ -23,25 +24,25 @@ COLOR_NAMES_TO_HEX = {
 
 
 class TableData(BaseModel):
-    headers: List[str] = Field(default_factory=list)
-    rows: List[List[str]] = Field(default_factory=list)
+    headers: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
     source_table_index: int = 0
-    title: Optional[str] = None
+    title: str | None = None
 
 
 class DocumentSection(BaseModel):
     title: str
-    heading_style: Optional[str] = None
+    heading_style: str | None = None
     action: Literal["create", "append", "insert_after", "replace"] = "create"
-    target_heading: Optional[str] = None
-    paragraphs: List[str] = Field(default_factory=list)
-    bullets: List[str] = Field(default_factory=list)
-    table_data: Optional[TableData] = None
-    image_query: Optional[str] = None
-    image_caption: Optional[str] = None
-    image_path: Optional[str] = None
-    citations: List[str] = Field(default_factory=list)
-    subsections: List['DocumentSection'] = Field(default_factory=list)
+    target_heading: str | None = None
+    paragraphs: list[str] = Field(default_factory=list)
+    bullets: list[str] = Field(default_factory=list)
+    table_data: TableData | None = None
+    image_query: str | None = None
+    image_caption: str | None = None
+    image_path: str | None = None
+    citations: list[str] = Field(default_factory=list)
+    subsections: list["DocumentSection"] = Field(default_factory=list)
 
 
 class ResearchSource(BaseModel):
@@ -49,20 +50,26 @@ class ResearchSource(BaseModel):
     title: str
     url: str
     snippet: str = ""
-    published_date: Optional[str] = None
-    score: Optional[float] = None
+    published_date: str | None = None
+    score: float | None = None
 
 
 class ThemeOverride(BaseModel):
-    element_type: str = Field(default="border", description="'border', 'font', 'color', 'shading', etc.")
-    target_identifier: Optional[str] = Field(default=None, description="Current color, style name, or border position")
-    new_value: str = Field(default="", description="New color hex, new border style, or property value")
-    description: Optional[str] = None
+    element_type: str = Field(
+        default="border", description="'border', 'font', 'color', 'shading', etc."
+    )
+    target_identifier: str | None = Field(
+        default=None, description="Current color, style name, or border position"
+    )
+    new_value: str = Field(
+        default="", description="New color hex, new border style, or property value"
+    )
+    description: str | None = None
 
 
 class ThemeOverrideRequest(BaseModel):
     target: Literal["table_border", "page_border", "heading_color"]
-    selector: Optional[str] = None
+    selector: str | None = None
     value: str
 
     @field_validator("value")
@@ -73,88 +80,117 @@ class ThemeOverrideRequest(BaseModel):
             return COLOR_NAMES_TO_HEX[clean.lower()]
         if re.match(r"^[0-9A-Fa-f]{6}$", clean):
             return clean.upper()
-        raise ValueError(f"Invalid color value '{v}'. Must be a 6-digit hex color code or recognized color name.")
+        raise ValueError(
+            f"Invalid color value '{v}'. Must be a 6-digit hex color code or recognized color name."
+        )
 
 
 class DocumentPlan(BaseModel):
     title: str
-    target_audience: Optional[str] = "Professional / Academic"
-    sections: List[DocumentSection] = Field(default_factory=list)
-    conclusion: Optional[str] = None
-    abstract: Optional[str] = None
-    applied_styles: List[str] = Field(default_factory=list)
-    applied_rules: List[str] = Field(default_factory=list)
-    edit_mode: Optional[str] = "create"
-    theme_overrides: List[ThemeOverride] = Field(default_factory=list)
-    research_sources: List[ResearchSource] = Field(default_factory=list)
+    target_audience: str | None = "Professional / Academic"
+    sections: list[DocumentSection] = Field(default_factory=list)
+    conclusion: str | None = None
+    abstract: str | None = None
+    applied_styles: list[str] = Field(default_factory=list)
+    applied_rules: list[str] = Field(default_factory=list)
+    edit_mode: str | None = "create"
+    theme_overrides: list[ThemeOverride] = Field(default_factory=list)
+    research_sources: list[ResearchSource] = Field(default_factory=list)
     generation_mode: str = "live"
-    warnings: List[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SlidePlan(BaseModel):
     slide_number: int
     title: str
-    subtitle: Optional[str] = None
+    subtitle: str | None = None
     layout_name: str
-    layout_role: Optional[str] = None
-    bullet_points: List[str] = Field(default_factory=list)
-    body_paragraphs: List[str] = Field(default_factory=list)
-    table_data: Optional[TableData] = None
-    image_query: Optional[str] = None
-    image_path: Optional[str] = None
-    speaker_notes: Optional[str] = None
-    columns: Optional[List[List[str]]] = None
+    layout_role: str | None = None
+    bullet_points: list[str] = Field(default_factory=list)
+    body_paragraphs: list[str] = Field(default_factory=list)
+    table_data: TableData | None = None
+    image_query: str | None = None
+    image_path: str | None = None
+    speaker_notes: str | None = None
+    columns: list[list[str]] | None = None
 
 
 class PresentationPlan(BaseModel):
     presentation_title: str
-    audience: Optional[str] = "General / Professional"
-    slides: List[SlidePlan] = Field(default_factory=list)
+    audience: str | None = "General / Professional"
+    slides: list[SlidePlan] = Field(default_factory=list)
     generation_mode: str = "live"
-    warnings: List[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class GenerationRequest(BaseModel):
     template_id: str
     prompt: str = Field(min_length=1, max_length=4000)
     document_type: Literal["docx", "pptx", "pdf"] = "docx"
-    mode: Literal["create_document", "create_presentation", "edit_document", "edit_presentation"] = "create_document"
-    target_sections: Optional[int] = Field(default=None, ge=1, le=50)
-    target_pages: Optional[int] = Field(default=None, ge=1, le=50)
-    detail_level: Optional[Literal["low", "medium", "high"]] = None
-    target_slides: Optional[int] = Field(default=None, ge=1, le=50)
-    target_pages_or_slides: Optional[int] = Field(default=None, ge=1, le=50)  # Deprecated alias
-    custom_instructions: Optional[str] = Field(default=None, max_length=1000)
+    mode: Literal[
+        "create_document", "create_presentation", "edit_document", "edit_presentation"
+    ] = "create_document"
+    target_sections: int | None = Field(default=None, ge=1, le=50)
+    target_pages: int | None = Field(default=None, ge=1, le=50)
+    detail_level: Literal["low", "medium", "high"] | None = None
+    target_slides: int | None = Field(default=None, ge=1, le=50)
+    target_pages_or_slides: int | None = Field(default=None, ge=1, le=50)  # Deprecated alias
+    enabled_rule_indices: list[int] | None = Field(default=None, max_length=12)
+    custom_instructions: str | None = Field(default=None, max_length=1000)
     research_enabled: bool = False
     include_images: bool = True
     image_mode: Literal["off", "search", "placeholder", "auto", "generate"] = "search"
     template_mode: Literal["auto", "fill", "append", "replace_body"] = "auto"
-    body_anchor_index: Optional[int] = None
-    overrides: List[ThemeOverrideRequest] = Field(default_factory=list)
-    edit_target_index: Optional[int] = None
-    edit_target_heading: Optional[str] = None
-    edit_action: Optional[Literal["append", "insert_after", "replace", "update_text"]] = None
+    body_anchor_index: int | None = None
+    overrides: list[ThemeOverrideRequest] = Field(default_factory=list)
+    edit_target_index: int | None = Field(default=None, ge=0)
+    edit_target_heading: str | None = None
+    edit_action: Literal["append", "insert_after"] | None = None
 
     @model_validator(mode="after")
     def validate_length_and_research_options(self) -> "GenerationRequest":
+        if self.enabled_rule_indices is not None and (
+            len(set(self.enabled_rule_indices)) != len(self.enabled_rule_indices)
+            or any(index < 0 or index > 11 for index in self.enabled_rule_indices)
+        ):
+            raise ValueError("enabled_rule_indices must contain unique indexes from 0 through 11.")
+
         if self.target_pages is not None and self.detail_level is not None:
             raise ValueError("Choose either target_pages or detail_level, not both.")
 
         if self.target_pages_or_slides is not None:
             if self.document_type == "pptx":
-                if self.target_slides is not None and self.target_slides != self.target_pages_or_slides:
-                    raise ValueError("target_slides conflicts with the legacy target_pages_or_slides value.")
+                if (
+                    self.target_slides is not None
+                    and self.target_slides != self.target_pages_or_slides
+                ):
+                    raise ValueError(
+                        "target_slides conflicts with the legacy target_pages_or_slides value."
+                    )
                 self.target_slides = self.target_slides or self.target_pages_or_slides
             else:
-                if self.target_pages is not None and self.target_pages != self.target_pages_or_slides:
-                    raise ValueError("target_pages conflicts with the legacy target_pages_or_slides value.")
+                if (
+                    self.target_pages is not None
+                    and self.target_pages != self.target_pages_or_slides
+                ):
+                    raise ValueError(
+                        "target_pages conflicts with the legacy target_pages_or_slides value."
+                    )
                 if self.detail_level is not None:
-                    raise ValueError("Use target_pages or detail_level with the legacy combined field, not both.")
+                    raise ValueError(
+                        "Use target_pages or detail_level with the legacy combined field, not both."
+                    )
                 self.target_pages = self.target_pages or self.target_pages_or_slides
 
         if self.document_type == "pptx":
-            if self.target_pages is not None or self.detail_level is not None or self.target_sections is not None:
-                raise ValueError("Presentations use target_slides; page and detail targets apply to documents.")
+            if (
+                self.target_pages is not None
+                or self.detail_level is not None
+                or self.target_sections is not None
+            ):
+                raise ValueError(
+                    "Presentations use target_slides; page and detail targets apply to documents."
+                )
             if self.research_enabled:
                 raise ValueError("Web research is currently available for documents only.")
         elif self.target_slides is not None:
@@ -170,13 +206,13 @@ class GenerationRequest(BaseModel):
 class ComponentResult(BaseModel):
     name: str
     status: Literal["identical", "changed", "intentional_override"]
-    detail: Optional[str] = None
+    detail: str | None = None
 
 
 class ValidationReport(BaseModel):
     status: Literal["passed", "failed", "not_applicable"]
     passed: bool = True
-    components: List[ComponentResult] = Field(default_factory=list)
+    components: list[ComponentResult] = Field(default_factory=list)
     original_style_hash: str = ""
     generated_style_hash: str = ""
     hash_match: bool = True
@@ -186,13 +222,13 @@ class ValidationReport(BaseModel):
     layout_drift_detected: bool = False
     header_footer_preserved: bool = True
     table_formatting_preserved: bool = True
-    issues: List[str] = Field(default_factory=list)
-    differences: Dict[str, Any] = Field(default_factory=dict)
-    intentional_overrides: List[str] = Field(default_factory=list)
-    content_checks: Dict[str, bool] = Field(default_factory=dict)
-    original_fingerprint: Optional[Dict[str, str]] = None
-    generated_fingerprint: Optional[Dict[str, str]] = None
-    warnings: List[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    differences: dict[str, Any] = Field(default_factory=dict)
+    intentional_overrides: list[str] = Field(default_factory=list)
+    content_checks: dict[str, bool] = Field(default_factory=dict)
+    original_fingerprint: dict[str, str] | None = None
+    generated_fingerprint: dict[str, str] | None = None
+    warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -200,10 +236,8 @@ class ValidationReport(BaseModel):
         if isinstance(data, dict):
             if "status" not in data and "passed" in data:
                 data["status"] = "passed" if data["passed"] else "failed"
-            elif "status" in data and "passed" not in data:
-                data["passed"] = (data["status"] != "failed")
-            elif "status" in data and "passed" in data:
-                data["passed"] = (data["status"] != "failed")
+            elif "status" in data and "passed" not in data or "status" in data and "passed" in data:
+                data["passed"] = data["status"] != "failed"
         return data
 
 
@@ -212,9 +246,9 @@ class GenerationResponse(BaseModel):
     output_filename: str
     download_url: str
     template_spec: TemplateSpecification
-    plan: Optional[Union[DocumentPlan, PresentationPlan, Dict[str, Any]]] = None
+    plan: DocumentPlan | PresentationPlan | dict[str, Any] | None = None
     validation: ValidationReport
     execution_time_sec: float = 0.0
     message: str = "Artifact generated and verified."
     generation_mode: str = "live"
-    warnings: List[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

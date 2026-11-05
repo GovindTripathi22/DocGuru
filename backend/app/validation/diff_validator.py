@@ -1,10 +1,14 @@
 """Visual and Structural Diff Validation using package XML fingerprints (VAL-01, VAL-02)."""
 
 import logging
+import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Literal
+
 import docx
+from docx.opc.exceptions import PackageNotFoundError as DocxPackageNotFoundError
 from pptx import Presentation
+from pptx.exc import PackageNotFoundError as PptxPackageNotFoundError
 
 from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..models.generation import ComponentResult, ValidationReport
@@ -22,8 +26,8 @@ class DiffValidator:
         self,
         original_spec: TemplateSpecification,
         generated_file_path: str,
-        intentional_overrides: Optional[List[str]] = None,
-        original_file_path: Optional[str] = None,
+        intentional_overrides: list[str] | None = None,
+        original_file_path: str | None = None,
     ) -> ValidationReport:
         gen_path = Path(generated_file_path)
         if not gen_path.exists():
@@ -54,8 +58,8 @@ class DiffValidator:
         gen_fp = fingerprint_package(gen_path)
         overrides_set = set(intentional_overrides or [])
 
-        components: List[ComponentResult] = []
-        issues: List[str] = []
+        components: list[ComponentResult] = []
+        issues: list[str] = []
         font_drift = False
         border_drift = False
         margin_drift = False
@@ -106,48 +110,77 @@ class DiffValidator:
         gen_spec = self.analyzer.analyze(generated_file_path)
 
         # Check page setup & margin drift
-        if original_spec.page and gen_spec.page:
-            if original_spec.page.model_dump() != gen_spec.page.model_dump():
-                margin_drift = True
-                issues.append(f"Page setup or margin drift detected: original={original_spec.page.model_dump()} vs generated={gen_spec.page.model_dump()}")
+        if (
+            original_spec.page
+            and gen_spec.page
+            and original_spec.page.model_dump() != gen_spec.page.model_dump()
+        ):
+            margin_drift = True
+            issues.append(
+                f"Page setup or margin drift detected: original={original_spec.page.model_dump()} vs generated={gen_spec.page.model_dump()}"
+            )
 
         # Check slide dimensions & layout drift
-        if original_spec.slide_dimensions and gen_spec.slide_dimensions:
-            if original_spec.slide_dimensions.model_dump() != gen_spec.slide_dimensions.model_dump():
-                layout_drift = True
-                issues.append(f"Slide dimension drift detected: original={original_spec.slide_dimensions.model_dump()} vs generated={gen_spec.slide_dimensions.model_dump()}")
+        if (
+            original_spec.slide_dimensions
+            and gen_spec.slide_dimensions
+            and original_spec.slide_dimensions.model_dump()
+            != gen_spec.slide_dimensions.model_dump()
+        ):
+            layout_drift = True
+            issues.append(
+                f"Slide dimension drift detected: original={original_spec.slide_dimensions.model_dump()} vs generated={gen_spec.slide_dimensions.model_dump()}"
+            )
 
-        if original_spec.available_layout_names and gen_spec.available_layout_names:
-            if set(original_spec.available_layout_names) != set(gen_spec.available_layout_names):
-                layout_drift = True
-                issues.append("Slide layout drift detected: layout names mismatch")
+        if (
+            original_spec.available_layout_names
+            and gen_spec.available_layout_names
+            and set(original_spec.available_layout_names) != set(gen_spec.available_layout_names)
+        ):
+            layout_drift = True
+            issues.append("Slide layout drift detected: layout names mismatch")
 
         # Check headers & footers preservation
-        if original_spec.header and gen_spec.header:
-            if original_spec.header.has_content and not gen_spec.header.has_content:
-                hf_preserved = False
-                issues.append("Header content was lost during generation.")
-        if original_spec.footer and gen_spec.footer:
-            if original_spec.footer.has_content and not gen_spec.footer.has_content:
-                hf_preserved = False
-                issues.append("Footer content was lost during generation.")
+        if (
+            original_spec.header
+            and gen_spec.header
+            and original_spec.header.has_content
+            and not gen_spec.header.has_content
+        ):
+            hf_preserved = False
+            issues.append("Header content was lost during generation.")
+        if (
+            original_spec.footer
+            and gen_spec.footer
+            and original_spec.footer.has_content
+            and not gen_spec.footer.has_content
+        ):
+            hf_preserved = False
+            issues.append("Footer content was lost during generation.")
 
         # Compute style hashes and match status
         orig_style_h = original_spec.style_hash or (orig_fp.style_hash if orig_fp else "")
         gen_style_h = gen_spec.style_hash or (gen_fp.style_hash if gen_fp else "")
         hash_match = (orig_style_h == gen_style_h) if (orig_style_h and gen_style_h) else True
-        if orig_fp and gen_fp and orig_fp.style_hash and gen_fp.style_hash:
-            if orig_fp.style_hash != gen_fp.style_hash:
-                hash_match = False
+        if (
+            orig_fp
+            and gen_fp
+            and orig_fp.style_hash
+            and gen_fp.style_hash
+            and orig_fp.style_hash != gen_fp.style_hash
+        ):
+            hash_match = False
 
         if not hash_match:
             if not any("style_hash" in i for i in issues):
-                issues.append(f"Style hash mismatch: original='{orig_style_h}' != generated='{gen_style_h}'")
+                issues.append(
+                    f"Style hash mismatch: original='{orig_style_h}' != generated='{gen_style_h}'"
+                )
             if not margin_drift and not layout_drift:
                 font_drift = True
 
         # 3. Content checks
-        content_checks: Dict[str, bool] = {}
+        content_checks: dict[str, bool] = {}
         try:
             if original_spec.document_type == "docx":
                 doc = docx.Document(generated_file_path)
@@ -168,14 +201,25 @@ class DiffValidator:
                     if hasattr(shape, "text")
                 )
                 content_checks["no_unfilled_placeholders"] = "Click to add text" not in all_text
-        except Exception as e:
+        except (
+            DocxPackageNotFoundError,
+            PptxPackageNotFoundError,
+            zipfile.BadZipFile,
+            OSError,
+            ValueError,
+            KeyError,
+        ) as e:
             content_checks["reopens_cleanly"] = False
             issues.append(f"Generated file corrupted or could not be reopened: {e}")
 
         # Derive final status
-        has_critical_drift = any(c.status == "changed" for c in components) or not content_checks.get("reopens_cleanly", True)
-        status = "failed" if (has_critical_drift or len(issues) > 0) else "passed"
-        passed = (status != "failed")
+        has_critical_drift = any(
+            c.status == "changed" for c in components
+        ) or not content_checks.get("reopens_cleanly", True)
+        status: Literal["passed", "failed"] = (
+            "failed" if (has_critical_drift or len(issues) > 0) else "passed"
+        )
+        passed = status != "failed"
 
         return ValidationReport(
             status=status,
@@ -191,7 +235,6 @@ class DiffValidator:
             header_footer_preserved=hf_preserved,
             table_formatting_preserved=tbl_preserved,
             issues=issues,
-
             differences={},
             intentional_overrides=list(overrides_set),
             content_checks=content_checks,

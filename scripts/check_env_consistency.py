@@ -5,9 +5,9 @@ Verifies that variable names match across .env.example, docker-compose.yml, READ
 Fails with exit code 1 if any discrepancy is detected.
 """
 
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -76,29 +76,39 @@ def main():
 
     # Note: BACKEND_URL is used by frontend/BFF and present in .env.example, compose, README, but not in backend Settings
     # SESSION_SECRET and BACKEND_API_KEY may appear in compose/frontend
-    backend_expected = env_vars - {"BACKEND_URL"}
-    
+    backend_expected = env_vars - {"BACKEND_URL", "BACKEND_API_KEY", "SESSION_SECRET"}
+
     errors = []
 
     # 1. Config vs .env.example
     missing_in_config = backend_expected - config_vars
     if missing_in_config:
-        errors.append(f"Variables in .env.example missing from Settings in config.py: {sorted(missing_in_config)}")
+        errors.append(
+            f"Variables in .env.example missing from Settings in config.py: {sorted(missing_in_config)}"
+        )
 
     # 2. README vs .env.example
     missing_in_readme = env_vars - readme_vars
     if missing_in_readme:
-        errors.append(f"Variables in .env.example missing from README.md: {sorted(missing_in_readme)}")
+        errors.append(
+            f"Variables in .env.example missing from README.md: {sorted(missing_in_readme)}"
+        )
 
     extra_in_readme = readme_vars - env_vars
     if extra_in_readme:
-        errors.append(f"Variables in README.md not present in .env.example: {sorted(extra_in_readme)}")
+        errors.append(
+            f"Variables in README.md not present in .env.example: {sorted(extra_in_readme)}"
+        )
 
     # 3. Compose vs .env.example
-    compose_backend_vars = {v for v in compose_vars if v not in {"BACKEND_API_KEY", "SESSION_SECRET"}}
-    missing_in_compose = env_vars - compose_backend_vars
+    compose_backend_vars = {
+        v for v in compose_vars if v not in {"BACKEND_API_KEY", "SESSION_SECRET"}
+    }
+    missing_in_compose = (env_vars - {"BACKEND_API_KEY", "SESSION_SECRET"}) - compose_backend_vars
     if missing_in_compose:
-        errors.append(f"Variables in .env.example missing from docker-compose.yml: {sorted(missing_in_compose)}")
+        errors.append(
+            f"Variables in .env.example missing from docker-compose.yml: {sorted(missing_in_compose)}"
+        )
 
     if errors:
         print("ERROR: Environment variable consistency check failed!", file=sys.stderr)
@@ -106,7 +116,9 @@ def main():
             print(f"  - {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"SUCCESS: All {len(env_vars)} environment variables are consistent across .env.example, config.py, docker-compose.yml, and README.md.")
+    print(
+        f"SUCCESS: All {len(env_vars)} environment variables are consistent across .env.example, config.py, docker-compose.yml, and README.md."
+    )
     sys.exit(0)
 
 

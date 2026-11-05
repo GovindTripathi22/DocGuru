@@ -1,13 +1,11 @@
 """Regression test suite for PPTX engine invariants (PPTX-01 to PPTX-03)."""
 
-from pathlib import Path
-import pytest
 from pptx import Presentation
 from pptx.util import Inches
 
 from backend.app.analyzer.template_analyzer import TemplateAnalyzer
 from backend.app.engines.pptx_engine import PptxEngine
-from backend.app.models.generation import PresentationPlan, SlidePlan, TableData
+from backend.app.models.generation import TableData
 
 
 def test_hallucinated_layout_resolves_to_content_capable_layout(minimal_pptx, tmp_path):
@@ -39,7 +37,7 @@ def test_title_only_layout_with_bullets_is_substituted_or_reported(minimal_pptx,
     locked = engine.load_template(str(minimal_pptx), spec)
 
     warnings = []
-    slide = engine.add_slide_from_layout(
+    engine.add_slide_from_layout(
         locked,
         "Title Slide",
         title="Quarterly update",
@@ -68,7 +66,7 @@ def test_non_overlapping_shapes_geometry(minimal_pptx, tmp_path):
         headers=["Col A", "Col B"],
         rows=[["Val 1", "Val 2"], ["Val 3", "Val 4"]],
     )
-    slide = engine.add_slide_from_layout(
+    engine.add_slide_from_layout(
         locked,
         "Title and Content",
         title="Geometry Slide",

@@ -3,7 +3,8 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
+
 import httpx
 
 from ..config import settings
@@ -13,10 +14,11 @@ from ..errors import (
     LLMTimeout,
     LLMUnavailable,
 )
-from ..llm.factory import get_llm_provider
 from ..llm.concurrency import llm_call_slot
+from ..llm.factory import get_llm_provider
 from ..llm.google_ai import GoogleAIProvider
 from ..llm.openai_compat import OpenAICompatProvider
+from ..llm.resilience import llm_resilience
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class GemmaClient:
     Never silently falls back to invented/canned content on live paths.
     """
 
-    def __init__(self, provider: Optional[str] = None):
+    def __init__(self, provider: str | None = None):
         self._provider = provider
         self.model_name = settings.MODEL_NAME
         self.api_key = settings.api_key
@@ -48,9 +50,9 @@ class GemmaClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        response_schema: Optional[Dict[str, Any]] = None,
-        max_tokens: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        response_schema: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
+    ) -> dict[str, Any]:
         """
         Requests structured JSON from the configured provider.
         Raises typed exceptions on failure; never returns silent fake content.
@@ -58,17 +60,30 @@ class GemmaClient:
         tokens = max_tokens or self.max_tokens
 
         if self.provider == "google_ai" and not self.api_key:
-            raise LLMNotConfigured("Google AI provider is not configured. GEMINI_API_KEY is missing.")
+            raise LLMNotConfigured(
+                "Google AI provider is not configured. GEMINI_API_KEY is missing."
+            )
 
         provider = get_llm_provider(self.provider)
         try:
-            async with llm_call_slot():
-                result = await provider.generate_json(
-                    system=system_prompt,
-                    user=user_prompt,
-                    schema=response_schema,
-                    max_output_tokens=tokens,
-                )
+
+            async def invoke():
+                async with llm_call_slot():
+                    return await provider.generate_json(
+                        system=system_prompt,
+                        user=user_prompt,
+                        schema=response_schema,
+                        max_output_tokens=tokens,
+                    )
+
+            result = await llm_resilience.call(
+                self.provider,
+                invoke,
+                max_retries=settings.LLM_MAX_RETRIES,
+                deadline_seconds=settings.GENERATION_DEADLINE_SEC,
+                breaker_threshold=settings.LLM_CIRCUIT_BREAKER_THRESHOLD,
+                breaker_reset_seconds=settings.LLM_CIRCUIT_BREAKER_RESET_SEC,
+            )
             if result.parsed is not None:
                 return result.parsed
             return self._extract_json_from_text(result.content)
@@ -77,7 +92,7 @@ class GemmaClient:
         except httpx.HTTPError as e:
             raise LLMUnavailable(f"LLM service communication error: {e}") from e
 
-    def _extract_json_from_text(self, text: str) -> Dict[str, Any]:
+    def _extract_json_from_text(self, text: str) -> dict[str, Any]:
         text = text.strip()
         if not text:
             raise LLMInvalidResponse("The model returned an empty response.")
@@ -97,16 +112,16 @@ class GemmaClient:
 
         try:
             return json.loads(text)
-        except Exception:
-            pass
+        except json.JSONDecodeError:
+            logger.debug("Provider response was not a JSON object at the root.")
 
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
                 return json.loads(text[start : end + 1])
-            except Exception:
-                pass
+            except json.JSONDecodeError:
+                logger.debug("Could not parse a JSON object from the response envelope.")
 
         raise LLMInvalidResponse(f"Could not parse valid JSON from LLM response: {text[:200]}")
 
@@ -114,9 +129,9 @@ class GemmaClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        response_schema: Optional[Dict[str, Any]],
+        response_schema: dict[str, Any] | None,
         max_tokens: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         provider = GoogleAIProvider(
             api_key=self.api_key,
             model_name=self.model_name,
@@ -135,10 +150,11 @@ class GemmaClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        response_schema: Optional[Dict[str, Any]],
+        response_schema: dict[str, Any] | None,
         max_tokens: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         import asyncio
+
         endpoint = (self.endpoint or "http://127.0.0.1:11434").rstrip("/")
         url = f"{endpoint}/api/chat"
         payload = {
@@ -174,9 +190,9 @@ class GemmaClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        response_schema: Optional[Dict[str, Any]],
+        response_schema: dict[str, Any] | None,
         max_tokens: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         provider = OpenAICompatProvider(
             endpoint=self.endpoint,
             model_name=self.model_name,

@@ -1,9 +1,9 @@
 """Validated application configuration. Secrets are never logged."""
 
-from pathlib import Path
-import shutil
-from typing import Literal
 import logging
+import shutil
+from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,12 +13,14 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(BASE_DIR.parent / ".env"), env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR.parent / ".env"), env_file_encoding="utf-8", extra="ignore"
+    )
 
     APP_NAME: str = "DocGuru"
     DEBUG: bool = False
     LOG_CONTENT: bool = False
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = Field(default=8000, ge=1, le=65535)
     MODEL_PROVIDER: Literal["google_ai", "ollama", "openai_compat", "demo"] = "google_ai"
     MODEL_NAME: str = "gemma-4-31b-it"
@@ -32,16 +34,19 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SEC: int = Field(default=90, ge=1, le=600)
     LLM_MAX_RETRIES: int = Field(default=3, ge=0, le=10)
     LLM_MAX_CONCURRENCY: int = Field(default=3, ge=1, le=32)
+    GENERATION_DEADLINE_SEC: int = Field(default=300, ge=1, le=1800)
+    LLM_CIRCUIT_BREAKER_THRESHOLD: int = Field(default=5, ge=1, le=100)
+    LLM_CIRCUIT_BREAKER_RESET_SEC: int = Field(default=30, ge=1, le=600)
     LLM_THINKING: Literal["off", "default"] = "default"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     API_KEYS: str = ""
     MAX_UPLOAD_MB: int = Field(default=25, ge=1, le=250)
     MAX_PDF_PAGES: int = Field(default=100, ge=1, le=1000)
+    ANALYZE_TIMEOUT_SEC: int = Field(default=30, ge=1, le=180)
     RETENTION_HOURS: int = Field(default=24, ge=1, le=720)
     WORKER_THREADS: int = Field(default=4, ge=1, le=32)
     MAX_CONCURRENT_JOBS: int = Field(default=4, ge=1, le=64)
     MIN_FREE_MB: int = Field(default=512, ge=1)
-    PREVIEW_ENABLED: bool = False
     PAGE_BREAK_BETWEEN_SECTIONS: bool = False
     IMAGE_PLACEHOLDERS: bool = False
     IMAGE_CACHE_MAX_MB: int = Field(default=500, ge=1)
@@ -116,5 +121,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-for directory in (settings.UPLOAD_DIR, settings.OUTPUT_DIR, settings.TEMP_DIR, settings.DATA_DIR, settings.JOBS_DIR):
+for directory in (
+    settings.UPLOAD_DIR,
+    settings.OUTPUT_DIR,
+    settings.TEMP_DIR,
+    settings.DATA_DIR,
+    settings.JOBS_DIR,
+):
     directory.mkdir(parents=True, exist_ok=True)

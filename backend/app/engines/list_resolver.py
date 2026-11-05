@@ -1,8 +1,8 @@
 """Deterministic list style resolution conforming to DOCX-02."""
 
 import logging
-from typing import Dict, List, Optional, Tuple
-from docx import Document
+
+from docx.document import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
@@ -17,7 +17,7 @@ class ListStyleResolver:
         self.sorted_style_names = sorted(s.name for s in doc.styles)
         self.bullet_num_id, self.number_num_id = self._inspect_numbering_part()
 
-    def _inspect_numbering_part(self) -> Tuple[Optional[str], Optional[str]]:
+    def _inspect_numbering_part(self) -> tuple[str | None, str | None]:
         """Scans numbering.xml if present to identify real bullet and decimal numIds."""
         bullet_id = None
         decimal_id = None
@@ -34,20 +34,22 @@ class ListStyleResolver:
                     continue
                 abs_id = abs_id_elem.get(qn("w:val"))
                 # Check abstractNum definition
-                abs_num = tree.xpath(f".//w:abstractNum[@w:abstractNumId='{abs_id}']")
-                if abs_num:
-                    num_fmt = abs_num[0].xpath(".//w:numFmt")
-                    if num_fmt:
-                        val = num_fmt[0].get(qn("w:val"))
-                        if val == "bullet" and bullet_id is None:
-                            bullet_id = n_id
-                        elif val in ("decimal", "upperRoman", "lowerRoman") and decimal_id is None:
-                            decimal_id = n_id
-        except Exception:
-            pass
+                num_fmt = tree.xpath(
+                    f".//w:abstractNum[@w:abstractNumId='{abs_id}']/w:lvl/w:numFmt"
+                )
+                if num_fmt:
+                    val = num_fmt[0].get(qn("w:val"))
+                    if val == "bullet" and bullet_id is None:
+                        bullet_id = n_id
+                    elif val in ("decimal", "upperRoman", "lowerRoman") and decimal_id is None:
+                        decimal_id = n_id
+        except (AttributeError, KeyError, TypeError, ValueError):
+            logger.debug(
+                "Template numbering part could not be inspected; list fallback will be used."
+            )
         return bullet_id, decimal_id
 
-    def resolve_bullet_style(self, level: int = 0) -> Tuple[Optional[str], bool]:
+    def resolve_bullet_style(self, level: int = 0) -> tuple[str | None, bool]:
         """
         Resolves bullet candidate in strict priority:
         1. List Bullet / List Bullet 2 / List Bullet 3 by level
@@ -84,7 +86,7 @@ class ListStyleResolver:
         paragraph: Paragraph,
         text: str,
         level: int = 0,
-        warnings: Optional[List[str]] = None,
+        warnings: list[str] | None = None,
     ) -> None:
         style_name, is_fallback = self.resolve_bullet_style(level)
 
@@ -96,8 +98,8 @@ class ListStyleResolver:
                     # Add subtle indentation per level if not defined by style
                     pass
                 return
-            except Exception:
-                pass
+            except (KeyError, TypeError, ValueError):
+                logger.debug("Template bullet style could not be applied; trying numbering XML.")
 
         if self.bullet_num_id:
             # Apply direct numPr referencing verified bullet numId
@@ -113,8 +115,8 @@ class ListStyleResolver:
                 pPr.append(numPr)
                 paragraph.text = text
                 return
-            except Exception:
-                pass
+            except (AttributeError, TypeError, ValueError):
+                logger.debug("Template bullet numbering could not be applied; using text fallback.")
 
         # Last resort: hanging-indent paragraph with bullet character
         if warnings is not None:

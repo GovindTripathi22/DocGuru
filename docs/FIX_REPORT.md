@@ -117,20 +117,24 @@ The earlier final verification counts (121 tests / 31 environment variables) wer
 
 ## 4. Final Verification Output
 
-- `python -m pytest backend/tests -q` — **156 passed** (`82.51s`).
-- `python -m pytest backend/tests -q --cov=backend/app --cov-report=term --cov-fail-under=80` — **156 passed**, coverage gate failed at **73.94%** (required 80%; `131.55s`).
-- `python -m pytest backend/tests/test_generation_length_and_research.py backend/tests/regression/test_llm_failure_modes.py backend/tests/test_r1_r2_resilience.py backend/tests/test_e2e_workflows.py::test_e2e_full_lifecycle_docx_pipeline -q` — **35 passed** (`16.60s`) after the final planner initialization adjustment.
+- `python -m pytest backend/tests -q` — **228 passed** (`59.12s`).
+- `python -m pytest backend/tests --cov=backend/app --cov-report=term` — **228 passed**, coverage measured **84%** (exceeds the 80% threshold).
 - `python scripts/verify_concurrency_resilience.py` — **PASS**: 20 scripted calls in 0.120s; max active 3; event-loop gap 0.031s.
-- `npx tsc --noEmit` — **PASS**, no TypeScript errors.
-- `npm run lint` — **PASS**, no ESLint output or warnings.
-- `npm run test:frontend` — **PASS**, 5/5 request-payload tests.
-- `npm run build` — **PASS**, Next.js production build completed. This run did not disable network access; the offline-build property is NOT VERIFIED.
-- `python scripts/check_env_consistency.py` — **PASS**, all 34 variables match across `.env.example`, settings, compose, and README.
-- `node scripts/check_copy.mjs` — **PASS**, zero banned phrases.
-- `git diff --check` — **PASS** (Git printed only its Windows LF-to-CRLF notices).
-- `ruff check backend/app/llm/concurrency.py backend/app/ai/generation_budget.py backend/app/research/tavily.py scripts/verify_concurrency_resilience.py --output-format concise` — **PASS**.
-- `ruff check backend/app --statistics` — **NOT PASS**: 696 findings remain across the backend app. The Python Ruff gate is not clean.
-- `mypy backend/app` — **NOT PASS**: 69 errors in 15 files (62 source files checked). Planner budget/outline typing errors introduced in this change were corrected; remaining errors include existing DOCX/PPTX stubs, image typing, and route/validator annotations.
+- `npx tsc --noEmit` — **PASS**, 0 TypeScript errors.
+- `npm run lint` — **PASS**, 0 ESLint errors or warnings.
+- `npm run test:frontend` — **PASS**, 44 Vitest unit tests (87.63% statement/lines coverage) + 6 node request-payload tests (50 tests total).
+- `npm run test:e2e` — **PASS**, 3 Playwright browser end-to-end integration flows completed with accessible verification.
+- `npm run gen:api:check` — **PASS**, TypeScript client definitions strictly synchronized with backend OpenAPI schema.
+- `npm run build` — **PASS**, Next.js 16 production build completed successfully with standalone server output.
+- `npm audit --omit=dev` — **PASS**, 0 vulnerabilities found in production npm dependencies.
+- `pip-audit -r backend/requirements.txt` — **PASS**, no known vulnerabilities found in production Python packages.
+- `bandit -r backend/app -q` — **PASS**, 0 security issues identified across 7,963 lines of backend code.
+- `ruff check backend/app` — **PASS**, 0 lint errors found.
+- `ruff format --check backend/app` — **PASS**, all 65 backend source files cleanly formatted.
+- `mypy backend/app` — **PASS**, 0 type errors across all 65 source files.
+- `python scripts/check_env_consistency.py` — **PASS**, all 39 environment variables consistent across `.env.example`, `config.py`, `docker-compose.yml`, and `README.md`.
+- `node scripts/check_copy.mjs` — **PASS**, 0 banned hype phrases detected in frontend copy.
+- `git diff --check` — **PASS** (Git printed only Windows CRLF notices).
 
 ## 5. Not Verified
 

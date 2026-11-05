@@ -1,10 +1,7 @@
-from typing import Union, Dict, Any, Optional, List
-from pathlib import Path
 import logging
 
 from ..engines.docx_engine import DocxEngine
 from ..engines.pptx_engine import PptxEngine
-from ..engines.style_lock import LockedTemplate, LockedPresentation
 from ..models.generation import DocumentPlan, PresentationPlan, ThemeOverrideRequest
 from ..models.template_spec import TemplateSpecification
 
@@ -29,12 +26,12 @@ class DocumentExecutor:
         plan: DocumentPlan,
         output_path: str,
         template_mode: str = "auto",
-        body_anchor_index: Optional[int] = None,
-        overrides: Optional[List[ThemeOverrideRequest]] = None,
-        edit_action: Optional[str] = None,
-        target_heading: Optional[str] = None,
-        target_index: Optional[int] = None,
-        warnings: Optional[List[str]] = None,
+        body_anchor_index: int | None = None,
+        overrides: list[ThemeOverrideRequest] | None = None,
+        edit_action: str | None = None,
+        target_heading: str | None = None,
+        target_index: int | None = None,
+        warnings: list[str] | None = None,
     ) -> str:
         """
         Executes a DocumentPlan against a locked DOCX template.
@@ -61,7 +58,7 @@ class DocumentExecutor:
         plan: PresentationPlan,
         output_path: str,
         keep_existing_slides: bool = False,
-        warnings: Optional[List[str]] = None,
+        warnings: list[str] | None = None,
     ) -> str:
         """
         Executes a PresentationPlan against a locked PPTX template.

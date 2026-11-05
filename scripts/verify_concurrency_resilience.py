@@ -50,17 +50,18 @@ async def verify_global_concurrency_limit() -> tuple[float, float, int]:
 
         pulse = asyncio.create_task(heartbeat())
         started = time.perf_counter()
-        results = await asyncio.gather(*[
-            client.generate_structured_json("system", f"request {index}")
-            for index in range(20)
-        ])
+        results = await asyncio.gather(
+            *[client.generate_structured_json("system", f"request {index}") for index in range(20)]
+        )
         elapsed = time.perf_counter() - started
         finished.set()
         await pulse
 
         assert len(results) == 20
         assert all(result == {"ok": True} for result in results)
-        assert provider.max_active == 3, f"Expected at most 3 active calls; observed {provider.max_active}."
+        assert provider.max_active == 3, (
+            f"Expected at most 3 active calls; observed {provider.max_active}."
+        )
         assert elapsed < 4.0, f"20 async calls took too long: {elapsed:.3f}s."
         max_gap = max(heartbeat_gaps, default=0.0)
         assert max_gap <= 0.2, f"Event loop heartbeat gap exceeded 200 ms: {max_gap:.3f}s."

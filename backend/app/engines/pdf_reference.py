@@ -2,9 +2,11 @@
 
 import logging
 from pathlib import Path
+
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.document import Document as DocumentObject
 from docx.enum.style import WD_STYLE_TYPE
+from docx.shared import Pt
 
 from ..models.template_spec import TemplateSpecification
 
@@ -17,7 +19,7 @@ class PdfReferenceBuilder:
     dominant fonts, and heading typography analyzed from a PDF template.
     """
 
-    def build_docx_base(self, spec: TemplateSpecification, target_path: Path) -> Document:
+    def build_docx_base(self, spec: TemplateSpecification, target_path: Path) -> DocumentObject:
         doc = Document()
         sec = doc.sections[0]
 
@@ -32,8 +34,9 @@ class PdfReferenceBuilder:
 
         # Apply typography
         normal_style = doc.styles["Normal"]
-        body_font = spec.fonts.body or spec.fonts.default or "Calibri"
-        normal_style.font.name = body_font
+        body_font = spec.fonts.body or spec.fonts.default
+        if body_font:
+            normal_style.font.name = body_font
         normal_style.font.size = Pt(11)
 
         # Add or configure Heading styles
@@ -45,7 +48,8 @@ class PdfReferenceBuilder:
                 h_style = doc.styles.add_style(h_name, WD_STYLE_TYPE.PARAGRAPH)
 
             h_font = getattr(spec.fonts, f"heading{h_num}", None) or body_font
-            h_style.font.name = h_font
+            if h_font:
+                h_style.font.name = h_font
             h_style.font.bold = True
             sizes = {1: 18, 2: 14, 3: 12}
             h_style.font.size = Pt(sizes.get(h_num, 12))

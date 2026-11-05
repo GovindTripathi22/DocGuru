@@ -2,7 +2,7 @@
 
 import abc
 import logging
-from typing import List, Optional
+
 import httpx
 
 from .models import ImageCandidate
@@ -18,7 +18,7 @@ class ImageProvider(abc.ABC):
         width: int = 800,
         height: int = 450,
         orientation: str = "landscape",
-    ) -> List[ImageCandidate]:
+    ) -> list[ImageCandidate]:
         pass
 
 
@@ -32,12 +32,12 @@ class WikimediaProvider(ImageProvider):
         width: int = 800,
         height: int = 450,
         orientation: str = "landscape",
-    ) -> List[ImageCandidate]:
+    ) -> list[ImageCandidate]:
         clean_query = query.strip()
         if not clean_query:
             return []
 
-        params = {
+        params: dict[str, str | int] = {
             "action": "query",
             "generator": "search",
             "gsrsearch": f"{clean_query} filetype:bitmap",
@@ -77,7 +77,9 @@ class WikimediaProvider(ImageProvider):
                     h = info.get("thumbheight") or info.get("height") or height
                     meta = info.get("extmetadata", {})
                     author = meta.get("Artist", {}).get("value")
-                    license_name = meta.get("LicenseShortName", {}).get("value", "CC / Public Domain")
+                    license_name = meta.get("LicenseShortName", {}).get(
+                        "value", "CC / Public Domain"
+                    )
 
                     candidates.append(
                         ImageCandidate(
@@ -91,7 +93,7 @@ class WikimediaProvider(ImageProvider):
                         )
                     )
                 return candidates
-        except Exception as e:
+        except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError) as e:
             logger.warning("Wikimedia search failed for '%s': %s", query, e)
             return []
 
@@ -108,7 +110,7 @@ class UnsplashProvider(ImageProvider):
         width: int = 800,
         height: int = 450,
         orientation: str = "landscape",
-    ) -> List[ImageCandidate]:
+    ) -> list[ImageCandidate]:
         if not self.access_key:
             return []
 
@@ -116,7 +118,7 @@ class UnsplashProvider(ImageProvider):
             "Authorization": f"Client-ID {self.access_key}",
             "Accept-Version": "v1",
         }
-        params = {
+        params: dict[str, str | int] = {
             "query": query,
             "per_page": 5,
             "orientation": orientation,
@@ -151,7 +153,7 @@ class UnsplashProvider(ImageProvider):
                         )
                     )
                 return candidates
-        except Exception as e:
+        except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError) as e:
             logger.warning("Unsplash search failed for '%s': %s", query, e)
             return []
 
@@ -168,12 +170,12 @@ class PexelsProvider(ImageProvider):
         width: int = 800,
         height: int = 450,
         orientation: str = "landscape",
-    ) -> List[ImageCandidate]:
+    ) -> list[ImageCandidate]:
         if not self.api_key:
             return []
 
         headers = {"Authorization": self.api_key}
-        params = {
+        params: dict[str, str | int] = {
             "query": query,
             "per_page": 5,
             "orientation": orientation,
@@ -205,6 +207,6 @@ class PexelsProvider(ImageProvider):
                         )
                     )
                 return candidates
-        except Exception as e:
+        except (httpx.HTTPError, AttributeError, KeyError, TypeError, ValueError) as e:
             logger.warning("Pexels search failed for '%s': %s", query, e)
             return []

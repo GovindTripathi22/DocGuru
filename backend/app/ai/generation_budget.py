@@ -20,7 +20,10 @@ class DocumentBudget:
 
 
 def resolve_document_budget(
-    *, target_pages: int | None, detail_level: DetailLevel | None, target_sections: int | None = None
+    *,
+    target_pages: int | None,
+    detail_level: DetailLevel | None,
+    target_sections: int | None = None,
 ) -> DocumentBudget:
     """Map user length choices to bounded content budgets, not a page guarantee."""
     if target_pages is not None and detail_level is not None:
@@ -34,7 +37,9 @@ def resolve_document_budget(
     if pages < 1 or pages > 50:
         raise ValueError("Document page targets must be between 1 and 50.")
 
-    words_per_page = WORDS_PER_CUSTOM_PAGE if target_pages is not None else DETAIL_WORDS_PER_PAGE[level]
+    words_per_page = (
+        WORDS_PER_CUSTOM_PAGE if target_pages is not None else DETAIL_WORDS_PER_PAGE[level]
+    )
     target_words = pages * words_per_page
     sections = target_sections or max(2, min(50, math.ceil(pages * 1.4)))
     sections = max(1, min(sections, 50))

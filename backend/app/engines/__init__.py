@@ -1,13 +1,13 @@
-from .style_lock import StyleLock, LockedTemplate, LockedPresentation
 from .docx_engine import DocxEngine
-from .pptx_engine import PptxEngine
 from .pdf_extractor import PdfExtractor
+from .pptx_engine import PptxEngine
+from .style_lock import LockedPresentation, LockedTemplate, StyleLock
 
 __all__ = [
-    "StyleLock",
-    "LockedTemplate",
-    "LockedPresentation",
     "DocxEngine",
-    "PptxEngine",
+    "LockedPresentation",
+    "LockedTemplate",
     "PdfExtractor",
+    "PptxEngine",
+    "StyleLock",
 ]

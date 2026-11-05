@@ -1,5 +1,4 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ImageCandidate(BaseModel):
@@ -7,7 +6,7 @@ class ImageCandidate(BaseModel):
     width: int
     height: int
     license: str = "Public Domain / CC"
-    author: Optional[str] = None
-    source_url: Optional[str] = None
-    download_location: Optional[str] = None
-    attribution: Optional[str] = None
+    author: str | None = None
+    source_url: str | None = None
+    download_location: str | None = None
+    attribution: str | None = None

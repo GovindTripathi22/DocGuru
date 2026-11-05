@@ -2,61 +2,143 @@ name: CI
 
 on:
   push:
-    branches: [main, master, fix/*]
+    branches: [main, master, "fix/*"]
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   backend:
-    name: Backend Tests & Consistency
+    name: Backend / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install dependencies
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.lock
+            backend/requirements-dev.lock
+      - name: Install backend and development dependencies
+        run: python -m pip install -r backend/requirements-dev.lock
+      - name: Verify compiled dependency locks
+        if: matrix.python-version == '3.12'
         run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-
-      - name: Check environment consistency
+          pip-compile --resolver=backtracking --output-file=backend/requirements.lock backend/requirements.txt
+          pip-compile --strip-extras --resolver=backtracking --output-file=backend/requirements-dev.lock backend/requirements.txt backend/requirements-dev.txt
+          git diff --exit-code -- backend/requirements.lock backend/requirements-dev.lock
+      - name: Check environment variable consistency
+        run: python scripts/check_env_consistency.py
+      - name: Ruff lint and format
         run: |
-          python scripts/check_env_consistency.py
-
-      - name: Run pytest test suite
-        run: |
-          python -m pytest backend/tests -v
+          ruff check backend/app backend/tests scripts
+          ruff format --check backend/app backend/tests scripts
+      - name: Mypy
+        run: python -m mypy backend/app
+      - name: Backend tests and coverage gate
+        run: python -m pytest backend/tests -q --cov=backend/app --cov-report=term --cov-fail-under=80
+      - name: Bandit high severity scan
+        if: matrix.python-version == '3.12'
+        run: bandit -r backend/app -ll
+      - name: Audit runtime dependencies
+        if: matrix.python-version == '3.12'
+        run: pip-audit -r backend/requirements-dev.lock
+      - name: Verify asynchronous provider resilience
+        if: matrix.python-version == '3.12'
+        run: python scripts/verify_concurrency_resilience.py
 
   frontend:
-    name: Frontend Lint & Build
+    name: Frontend unit, types, lint, and production build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check banned copy
+          cache: npm
+      - run: npm ci
+      - name: Install backend runtime for OpenAPI generation
+        run: python -m pip install -r backend/requirements.lock
+      - name: Check generated API types
+        run: npm run gen:api:check
+      - name: Check user-facing copy
         run: node scripts/check_copy.mjs
-
-      - name: TypeScript typecheck
+      - name: Check production dependencies for high and critical advisories
+        run: npm audit --omit=dev --audit-level=high
+      - name: TypeScript
         run: npx tsc --noEmit
-
-      - name: ESLint check
+      - name: ESLint
         run: npm run lint
-
-      - name: Next.js build
+      - name: Frontend tests and coverage
+        run: npm run test:frontend
+      - name: Production build
         run: npm run build
+
+  browser-e2e:
+    name: Browser integration and accessibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.lock
+      - run: npm ci
+      - run: python -m pip install -r backend/requirements.lock
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  containers:
+    name: Container configuration, build, and scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Provide local example configuration
+        run: cp .env.example .env
+      - name: Validate Compose configuration
+        run: docker compose config -q
+      - name: Build backend image
+        run: docker build -t docguru-backend:ci -f Dockerfile.backend .
+      - name: Build frontend image with offline Next build
+        run: DOCKER_BUILDKIT=1 docker build -t docguru-frontend:ci -f Dockerfile.frontend .
+      - name: Check backend image user and files
+        run: |
+          test "$(docker run --rm --entrypoint sh docguru-backend:ci -c 'id -u')" = "10001"
+          docker run --rm --entrypoint sh docguru-backend:ci -c '! test -e /app/.env && ! test -e /app/node_modules && ! test -e /app/backend/uploads/*'
+      - name: Check frontend image user
+        run: test "$(docker run --rm --entrypoint sh docguru-frontend:ci -c 'id -u')" = "1000"
+      - name: Scan backend image
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.1 image --exit-code 1 --severity HIGH,CRITICAL docguru-backend:ci
+      - name: Scan frontend image
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.1 image --exit-code 1 --severity HIGH,CRITICAL docguru-frontend:ci
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3

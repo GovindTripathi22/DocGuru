@@ -3,19 +3,20 @@
 import asyncio
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
 from pydantic import BaseModel
 
-from .base import LLMResult
 from ..config import settings
 from ..errors import (
+    AppError,
     LLMInvalidResponse,
-    LLMNotConfigured,
     LLMRateLimited,
     LLMTimeout,
     LLMUnavailable,
 )
+from .base import LLMResult, retry_after_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,11 @@ class OpenAICompatProvider:
 
     def __init__(
         self,
-        endpoint: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
-        temperature: Optional[float] = None,
-        timeout_sec: Optional[int] = None,
+        endpoint: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
+        temperature: float | None = None,
+        timeout_sec: int | None = None,
     ):
         self.endpoint = (endpoint or settings.MODEL_ENDPOINT or "http://127.0.0.1:8001").rstrip("/")
         self.model_name = model_name or settings.MODEL_NAME
@@ -42,9 +43,9 @@ class OpenAICompatProvider:
         system: str,
         user: str,
         *,
-        schema: Optional[dict[str, Any] | type[BaseModel]] = None,
-        max_output_tokens: Optional[int] = None,
-        timeout: Optional[float] = None,
+        schema: dict[str, Any] | type[BaseModel] | None = None,
+        max_output_tokens: int | None = None,
+        timeout: float | None = None,
     ) -> LLMResult:
         effective_timeout = timeout or float(self.timeout_sec)
         tokens = max_output_tokens or settings.OUTLINE_MAX_TOKENS
@@ -70,9 +71,14 @@ class OpenAICompatProvider:
             async with httpx.AsyncClient(timeout=http_timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 if response.status_code == 429:
-                    raise LLMRateLimited("OpenAI-compatible endpoint rate limit exceeded.")
+                    raise LLMRateLimited(
+                        "OpenAI-compatible endpoint rate limit exceeded.",
+                        retry_after=retry_after_seconds(response.headers),
+                    )
                 if response.status_code in (500, 502, 503, 504):
-                    raise LLMUnavailable(f"OpenAI-compatible server returned HTTP {response.status_code}.")
+                    raise LLMUnavailable(
+                        f"OpenAI-compatible server returned HTTP {response.status_code}."
+                    )
                 response.raise_for_status()
                 data = response.json()
         except (asyncio.TimeoutError, httpx.TimeoutException) as e:
@@ -81,7 +87,9 @@ class OpenAICompatProvider:
             raise LLMUnavailable(f"Could not connect to server at {self.endpoint}: {e}") from e
         except httpx.HTTPStatusError as e:
             raise LLMUnavailable(f"Server HTTP error {e.response.status_code}: {e}") from e
-        except Exception as e:
+        except AppError:
+            raise
+        except Exception as e:  # noqa: BLE001 - normalize client failures to a typed provider error
             raise LLMUnavailable(f"Server communication error: {e}") from e
 
         choices = data.get("choices", [])
@@ -103,7 +111,9 @@ class OpenAICompatProvider:
         try:
             parsed = json.loads(raw_content)
         except json.JSONDecodeError as e:
-            raise LLMInvalidResponse(f"Server returned non-JSON response: {raw_content[:200]}") from e
+            raise LLMInvalidResponse(
+                f"Server returned non-JSON response: {raw_content[:200]}"
+            ) from e
 
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0) or 0

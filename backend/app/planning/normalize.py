@@ -1,10 +1,10 @@
 """Plan normalization, sanitization, and rich-text span parsing (LLM-04, LLM-05, LLM-06)."""
 
-from dataclasses import dataclass
 import logging
 import re
 import unicodedata
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from ..errors import LLMInvalidResponse
 
@@ -77,7 +77,7 @@ def strip_markdown_delimiters(text: str) -> str:
     return "".join(s.text for s in spans)
 
 
-def sanitize_text(text: Any, max_len: Optional[int] = None, field_name: str = "field") -> str:
+def sanitize_text(text: Any, max_len: int | None = None, field_name: str = "field") -> str:
     """
     Sanitizes arbitrary scalar values into clean, XML-legal, normalized unicode strings.
     Strips XML illegal control characters, collapses excessive whitespace,
@@ -85,10 +85,9 @@ def sanitize_text(text: Any, max_len: Optional[int] = None, field_name: str = "f
     """
     if text is None:
         return ""
-    if isinstance(text, float):
+    if isinstance(text, float) and text.is_integer():
         # Avoid trailing .0 noise for whole numbers (e.g. 2020.0 -> "2020")
-        if text.is_integer():
-            text = int(text)
+        text = int(text)
     text_str = str(text)
 
     # 1. Normalize unicode (NFC)
@@ -108,7 +107,9 @@ def sanitize_text(text: Any, max_len: Optional[int] = None, field_name: str = "f
 
     # 5. Cap length if requested
     if max_len is not None and len(text_str) > max_len:
-        logger.warning("Field '%s' length %d exceeded max %d; truncating", field_name, len(text_str), max_len)
+        logger.warning(
+            "Field '%s' length %d exceeded max %d; truncating", field_name, len(text_str), max_len
+        )
         text_str = text_str[:max_len].rstrip()
 
     return text_str
@@ -131,8 +132,14 @@ def normalize_plan(raw_plan: dict[str, Any], doc_type: str = "docx") -> dict[str
 
 
 def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
-    title = sanitize_text(raw.get("title") or raw.get("document_title") or "Document Report", max_len=200, field_name="title")
-    target_audience = sanitize_text(raw.get("target_audience") or "General Audience", max_len=200, field_name="target_audience")
+    title = sanitize_text(
+        raw.get("title") or raw.get("document_title") or "Document Report",
+        max_len=200,
+        field_name="title",
+    )
+    target_audience = sanitize_text(
+        raw.get("target_audience") or "General Audience", max_len=200, field_name="target_audience"
+    )
     conclusion = sanitize_text(raw.get("conclusion") or "", max_len=4000, field_name="conclusion")
 
     raw_sections = raw.get("sections")
@@ -146,7 +153,9 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(sec, dict):
             continue
 
-        sec_title = sanitize_text(sec.get("title") or f"Section {idx + 1}", max_len=200, field_name="section_title")
+        sec_title = sanitize_text(
+            sec.get("title") or f"Section {idx + 1}", max_len=200, field_name="section_title"
+        )
         heading_level = sec.get("heading_level", 1)
         try:
             heading_level = int(heading_level)
@@ -190,7 +199,9 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 raw_headers = []
             elif not isinstance(raw_headers, (list, tuple)):
                 raw_headers = [raw_headers]
-            headers = [sanitize_text(h, max_len=300, field_name="table_header") for h in raw_headers]
+            headers = [
+                sanitize_text(h, max_len=300, field_name="table_header") for h in raw_headers
+            ]
             raw_rows = raw_table.get("rows")
             if raw_rows is None:
                 raw_rows = []
@@ -200,31 +211,35 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
             headers = headers[:12]
             clean_rows = []
             for r in list(raw_rows)[:30]:
-                if isinstance(r, list):
-                    clean_row = [sanitize_text(c, max_len=300, field_name="table_cell") for c in r[:12]]
-                    clean_rows.append(clean_row)
-                    total_content_elements += 1
-                elif isinstance(r, tuple):
-                    clean_row = [sanitize_text(c, max_len=300, field_name="table_cell") for c in r[:12]]
+                if isinstance(r, (list, tuple)):
+                    clean_row = [
+                        sanitize_text(c, max_len=300, field_name="table_cell") for c in r[:12]
+                    ]
                     clean_rows.append(clean_row)
                     total_content_elements += 1
                 else:
                     clean_rows.append([sanitize_text(r, max_len=300, field_name="table_cell")])
                     total_content_elements += 1
             if headers or clean_rows:
-                caption = sanitize_text(raw_table.get("caption") or "Data Table", max_len=200, field_name="table_caption")
+                caption = sanitize_text(
+                    raw_table.get("caption") or "Data Table",
+                    max_len=200,
+                    field_name="table_caption",
+                )
                 table_dict = {"caption": caption, "headers": headers, "rows": clean_rows}
 
         if paragraphs or bullet_points or table_dict:
-            normalized_sections.append({
-                "section_number": idx + 1,
-                "title": sec_title,
-                "heading_level": heading_level,
-                "paragraphs": paragraphs,
-                "bullet_points": bullet_points,
-                "table": table_dict,
-                "applied_rules": sec.get("applied_rules") or [],
-            })
+            normalized_sections.append(
+                {
+                    "section_number": idx + 1,
+                    "title": sec_title,
+                    "heading_level": heading_level,
+                    "paragraphs": paragraphs,
+                    "bullet_points": bullet_points,
+                    "table": table_dict,
+                    "applied_rules": sec.get("applied_rules") or [],
+                }
+            )
 
     if not normalized_sections or total_content_elements == 0:
         raise LLMInvalidResponse("Document plan has no valid text content or sections.")
@@ -239,8 +254,14 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_presentation_plan(raw: dict[str, Any]) -> dict[str, Any]:
-    title = sanitize_text(raw.get("presentation_title") or raw.get("title") or "Presentation", max_len=200, field_name="presentation_title")
-    audience = sanitize_text(raw.get("audience") or "General Audience", max_len=200, field_name="audience")
+    title = sanitize_text(
+        raw.get("presentation_title") or raw.get("title") or "Presentation",
+        max_len=200,
+        field_name="presentation_title",
+    )
+    audience = sanitize_text(
+        raw.get("audience") or "General Audience", max_len=200, field_name="audience"
+    )
 
     raw_slides = raw.get("slides")
     if not isinstance(raw_slides, list) or len(raw_slides) == 0:
@@ -253,9 +274,15 @@ def _normalize_presentation_plan(raw: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(slide, dict):
             continue
 
-        slide_title = sanitize_text(slide.get("title") or f"Slide {idx + 1}", max_len=200, field_name="slide_title")
-        layout_name = sanitize_text(slide.get("layout_name") or "Title and Content", max_len=100, field_name="layout_name")
-        layout_role = sanitize_text(slide.get("layout_role") or "content", max_len=50, field_name="layout_role")
+        slide_title = sanitize_text(
+            slide.get("title") or f"Slide {idx + 1}", max_len=200, field_name="slide_title"
+        )
+        layout_name = sanitize_text(
+            slide.get("layout_name") or "Title and Content", max_len=100, field_name="layout_name"
+        )
+        layout_role = sanitize_text(
+            slide.get("layout_role") or "content", max_len=50, field_name="layout_role"
+        )
 
         # Body paragraphs
         raw_body = slide.get("body_paragraphs") or []
@@ -281,15 +308,19 @@ def _normalize_presentation_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 bullet_points.append(clean_b)
                 total_content_elements += 1
 
-        normalized_slides.append({
-            "slide_number": idx + 1,
-            "title": slide_title,
-            "layout_name": layout_name,
-            "layout_role": layout_role,
-            "body_paragraphs": body_paragraphs,
-            "bullet_points": bullet_points,
-            "speaker_notes": sanitize_text(slide.get("speaker_notes") or "", max_len=2000, field_name="speaker_notes"),
-        })
+        normalized_slides.append(
+            {
+                "slide_number": idx + 1,
+                "title": slide_title,
+                "layout_name": layout_name,
+                "layout_role": layout_role,
+                "body_paragraphs": body_paragraphs,
+                "bullet_points": bullet_points,
+                "speaker_notes": sanitize_text(
+                    slide.get("speaker_notes") or "", max_len=2000, field_name="speaker_notes"
+                ),
+            }
+        )
 
     if not normalized_slides or total_content_elements == 0:
         raise LLMInvalidResponse("Presentation plan has no valid slide content.")

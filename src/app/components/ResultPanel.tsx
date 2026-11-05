@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   AlertCircle,
@@ -56,13 +56,22 @@ export interface GenerationResultData {
 interface ResultPanelProps {
   result: GenerationResultData;
   templateType: "docx" | "pptx" | "pdf";
+  previewAvailable?: boolean;
   onReset: () => void;
 }
 
-export function ResultPanel({ result, templateType, onReset }: ResultPanelProps) {
+export function ResultPanel({
+  result,
+  templateType,
+  previewAvailable = false,
+  onReset,
+}: ResultPanelProps) {
   const [revalidating, setRevalidating] = useState(false);
   const [currentVal, setCurrentVal] = useState<ValidationReport>(result.validation);
   const [reverifyMessage, setReverifyMessage] = useState<string | null>(null);
+  const validationController = useRef<AbortController | null>(null);
+
+  useEffect(() => () => validationController.current?.abort(), []);
 
   const valStatus = currentVal.status || (currentVal.passed ? "passed" : "failed");
   const isPdf = templateType === "pdf";
@@ -70,10 +79,14 @@ export function ResultPanel({ result, templateType, onReset }: ResultPanelProps)
   const handleReverify = async () => {
     setRevalidating(true);
     setReverifyMessage(null);
+    validationController.current?.abort();
+    const controller = new AbortController();
+    validationController.current = controller;
     try {
       const res = await fetch("/api/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           template_id: result.template_id,
           generated_filename: result.output_filename,
@@ -87,9 +100,12 @@ export function ResultPanel({ result, templateType, onReset }: ResultPanelProps)
         setReverifyMessage("Re-validation request failed.");
       }
     } catch {
-      setReverifyMessage("Network error during re-verification.");
+      if (!controller.signal.aborted) setReverifyMessage("Network error during re-verification.");
     } finally {
-      setRevalidating(false);
+      if (validationController.current === controller) {
+        validationController.current = null;
+        setRevalidating(false);
+      }
     }
   };
 
@@ -147,15 +163,15 @@ export function ResultPanel({ result, templateType, onReset }: ResultPanelProps)
                 {isPdf
                   ? "Approximate layout (PDF reference mode)"
                   : valStatus === "passed"
-                  ? "Template Invariants Verified"
+                  ? "Template checks passed"
                   : "Template Drift Detected"}
               </h2>
               <p className="text-xs text-zinc-300 mt-0.5">
                 {isPdf
                   ? "Derived layout dimensions, typography, and margins from PDF structure."
                   : valStatus === "passed"
-                  ? "Target styles, theme fonts, and layout structures match the original template."
-                  : "Output document diverged from the original template package."}
+                  ? "No differences were detected in the template properties checked below."
+                  : "One or more checked template properties differ in the generated file."}
               </p>
             </div>
           </div>
@@ -191,7 +207,7 @@ export function ResultPanel({ result, templateType, onReset }: ResultPanelProps)
               disabled={revalidating}
               className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-50"
             >
-              <RotateCcw className={`h-3.5 w-3.5 ${revalidating ? "animate-spin" : ""}`} /> Re-verify
+              <RotateCcw className={`h-3.5 w-3.5 motion-reduce:animate-none ${revalidating ? "animate-spin" : ""}`} /> Re-verify
             </button>
           </div>
         </div>
@@ -231,6 +247,13 @@ export function ResultPanel({ result, templateType, onReset }: ResultPanelProps)
           </p>
         </div>
       </div>
+
+      {/* Preview availability */}
+      {!previewAvailable && (
+        <p className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
+          Inline preview is unavailable on this server. Download the artifact to review it in a compatible document or presentation app.
+        </p>
+      )}
 
       {/* Components Verification Table */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">

@@ -7,7 +7,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class ImageCache:
         self.max_bytes = max_mb * 1024 * 1024
         self.ttl_sec = ttl_sec
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
 
     def compute_key(
@@ -29,7 +29,9 @@ class ImageCache:
         height: int,
         fit: str = "crop",
     ) -> str:
-        data = f"{provider.strip().lower()}:{normalized_query.strip().lower()}:{width}x{height}:{fit}"
+        data = (
+            f"{provider.strip().lower()}:{normalized_query.strip().lower()}:{width}x{height}:{fit}"
+        )
         return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
     async def get_lock(self, key: str) -> asyncio.Lock:
@@ -38,7 +40,7 @@ class ImageCache:
                 self._locks[key] = asyncio.Lock()
             return self._locks[key]
 
-    def get(self, key: str) -> Optional[Tuple[Path, Dict[str, any]]]:
+    def get(self, key: str) -> tuple[Path, dict[str, Any]] | None:
         jpg_path = self.cache_dir / f"{key}.jpg"
         meta_path = self.cache_dir / f"{key}.json"
 
@@ -58,11 +60,11 @@ class ImageCache:
             now = time.time()
             os.utime(jpg_path, (now, now))
             return jpg_path, meta
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             logger.warning("Failed to read image cache for %s: %s", key, e)
             return None
 
-    def put(self, key: str, image_bytes: bytes, metadata: dict) -> Path:
+    def put(self, key: str, image_bytes: bytes, metadata: dict[str, Any]) -> Path:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         jpg_path = self.cache_dir / f"{key}.jpg"
         meta_path = self.cache_dir / f"{key}.json"
@@ -110,5 +112,5 @@ class ImageCache:
                 path.unlink(missing_ok=True)
                 meta_file.unlink(missing_ok=True)
                 total_size -= size
-        except Exception as e:
+        except OSError as e:
             logger.warning("Error during image cache eviction: %s", e)

@@ -3,10 +3,17 @@ import crypto from "crypto";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 const BACKEND_API_KEY = process.env.BACKEND_API_KEY || "";
-const SESSION_SECRET = process.env.SESSION_SECRET || "docguru-secret-key-32chars-minimum-pad";
+
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET?.trim();
+  if (!secret || secret.length < 32 || secret.toLowerCase().includes("replace-with")) {
+    throw new Error("SESSION_SECRET must be configured with at least 32 random characters.");
+  }
+  return secret;
+}
 
 function signSession(sessionId: string): string {
-  const hmac = crypto.createHmac("sha256", SESSION_SECRET);
+  const hmac = crypto.createHmac("sha256", getSessionSecret());
   hmac.update(sessionId);
   return `${sessionId}.${hmac.digest("hex")}`;
 }
@@ -16,7 +23,7 @@ function verifySession(cookieValue: string): string | null {
   if (parts.length !== 2) return null;
   const [sessionId, sig] = parts;
   try {
-    const hmac = crypto.createHmac("sha256", SESSION_SECRET);
+    const hmac = crypto.createHmac("sha256", getSessionSecret());
     hmac.update(sessionId);
     const expected = hmac.digest("hex");
     if (crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {

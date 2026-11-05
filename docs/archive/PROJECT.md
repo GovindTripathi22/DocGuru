@@ -1,3 +1,5 @@
+<!-- Archived reference: superseded by the current README, docs/FIX_REPORT.md, and docs/MANUAL_QA.md. This file may contain internal paths, old test counts, or claims that are no longer verified. -->
+
 # Project: Exact Template Inheritance System Overhaul
 
 ## Architecture

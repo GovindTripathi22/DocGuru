@@ -1,7 +1,6 @@
 import ast
-from pathlib import Path
 import sys
-import pytest
+from pathlib import Path
 
 MODULE_TO_DISTRIBUTION = {
     "PIL": "pillow",
@@ -31,7 +30,7 @@ def test_llm_client_has_no_undeclared_ollama_import():
 def test_all_backend_imports_are_declared_in_requirements():
     req_file = Path(__file__).parents[2] / "requirements.txt"
     assert req_file.exists()
-    
+
     declared_pkgs = set()
     for line in req_file.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -48,9 +47,8 @@ def test_all_backend_imports_are_declared_in_requirements():
             if isinstance(node, ast.Import):
                 for name in node.names:
                     imported_modules.add(name.name.split(".")[0])
-            elif isinstance(node, ast.ImportFrom):
-                if node.level == 0 and node.module:
-                    imported_modules.add(node.module.split(".")[0])
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported_modules.add(node.module.split(".")[0])
 
     stdlib = set(sys.stdlib_module_names)
     internal = {"backend", "app"}
@@ -59,4 +57,6 @@ def test_all_backend_imports_are_declared_in_requirements():
 
     for mod in third_party:
         dist_name = MODULE_TO_DISTRIBUTION.get(mod, mod.lower().replace("_", "-"))
-        assert dist_name in declared_pkgs, f"Imported module '{mod}' maps to '{dist_name}' which is not in requirements.txt"
+        assert dist_name in declared_pkgs, (
+            f"Imported module '{mod}' maps to '{dist_name}' which is not in requirements.txt"
+        )

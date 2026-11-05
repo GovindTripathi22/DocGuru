@@ -1,9 +1,12 @@
-import pytest
 from pathlib import Path
+
 from pptx import Presentation
+from pptx.enum.shapes import PP_PLACEHOLDER
+
 from backend.app.analyzer.pptx_analyzer import PptxAnalyzer
 from backend.app.engines.pptx_engine import PptxEngine
 from backend.app.models.generation import PresentationPlan, SlidePlan
+
 
 def test_pptx_load_and_spec_extraction(sample_pptx_template: Path):
     analyzer = PptxAnalyzer()
@@ -14,6 +17,7 @@ def test_pptx_load_and_spec_extraction(sample_pptx_template: Path):
     assert spec.slide_dimensions.aspect_ratio == "16:9"
     assert len(spec.available_layout_names) > 0
     assert len(spec.style_hash) > 0
+
 
 def test_pptx_template_slide_generation(sample_pptx_template: Path, tmp_path: Path):
     analyzer = PptxAnalyzer()
@@ -31,7 +35,7 @@ def test_pptx_template_slide_generation(sample_pptx_template: Path, tmp_path: Pa
                 title="Combating AI Misinformation",
                 subtitle="Strategies for Fact-Checking and Authenticity",
                 layout_name="Title Slide",
-                bullet_points=[]
+                bullet_points=[],
             ),
             SlidePlan(
                 slide_number=2,
@@ -40,10 +44,10 @@ def test_pptx_template_slide_generation(sample_pptx_template: Path, tmp_path: Pa
                 bullet_points=[
                     "Rapid generation of deepfakes and audio cloning",
                     "Difficulty in automated watermark detection",
-                    "Erosion of public trust in digital communications"
-                ]
-            )
-        ]
+                    "Erosion of public trust in digital communications",
+                ],
+            ),
+        ],
     )
 
     output_file = tmp_path / "generated_presentation.pptx"
@@ -65,3 +69,54 @@ def test_pptx_template_slide_generation(sample_pptx_template: Path, tmp_path: Pa
     assert s2.placeholders[0].text == "Key Challenges in Synthetic Media"
     body_text = s2.placeholders[1].text_frame.text
     assert "Rapid generation of deepfakes" in body_text
+
+
+def test_footer_date_and_slide_number_placeholders_remain_on_selected_layout(
+    sample_pptx_template: Path,
+):
+    engine = PptxEngine()
+    spec = PptxAnalyzer().analyze(str(sample_pptx_template))
+    locked = engine.load_template(str(sample_pptx_template), spec)
+
+    slide = engine.add_slide_from_layout(
+        locked_prs=locked,
+        layout_name="Title Only",
+        title="Summary",
+        bullet_points=[],
+        body_paragraphs=[],
+    )
+
+    retained = {
+        placeholder.placeholder_format.type for placeholder in slide.slide_layout.placeholders
+    }
+    assert {PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLIDE_NUMBER} <= retained
+
+
+def test_keep_existing_slides_appends_to_the_source_deck(
+    sample_pptx_template: Path, tmp_path: Path
+):
+    engine = PptxEngine()
+    spec = PptxAnalyzer().analyze(str(sample_pptx_template))
+    locked = engine.load_template(str(sample_pptx_template), spec)
+    original_titles = [slide.shapes.title.text for slide in locked.prs.slides]
+    plan = PresentationPlan(
+        presentation_title="Appendix",
+        slides=[
+            SlidePlan(
+                slide_number=1,
+                title="New Appendix",
+                layout_name="Title and Content",
+                bullet_points=["New material"],
+            )
+        ],
+    )
+
+    output = tmp_path / "appended.pptx"
+    engine.generate_from_plan(locked, plan, str(output), keep_existing_slides=True)
+    reopened = Presentation(str(output))
+
+    assert len(reopened.slides) == len(original_titles) + 1
+    assert [
+        reopened.slides[index].shapes.title.text for index in range(len(original_titles))
+    ] == original_titles
+    assert reopened.slides[-1].shapes.title.text == "New Appendix"

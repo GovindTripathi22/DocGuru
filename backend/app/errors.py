@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -17,7 +17,7 @@ class LLMNotConfigured(AppError):
     def __init__(
         self,
         message: str = "The AI provider is not configured. Set GEMINI_API_KEY or select MODEL_PROVIDER=demo.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="LLM_NOT_CONFIGURED",
@@ -31,7 +31,7 @@ class LLMUnavailable(AppError):
     def __init__(
         self,
         message: str = "The AI service is currently unavailable. Please retry.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="LLM_UNAVAILABLE",
@@ -45,7 +45,7 @@ class LLMTimeout(AppError):
     def __init__(
         self,
         message: str = "The AI request timed out. Please retry with a smaller scope.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="LLM_TIMEOUT",
@@ -60,7 +60,7 @@ class LLMRateLimited(AppError):
         self,
         message: str = "Rate limit exceeded. Please wait before trying again.",
         retry_after: int = 30,
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         d = details or {}
         d["retry_after"] = retry_after
@@ -76,7 +76,7 @@ class LLMBlocked(AppError):
     def __init__(
         self,
         message: str = "The request was blocked by safety filters.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="LLM_BLOCKED",
@@ -90,7 +90,7 @@ class LLMTruncated(AppError):
     def __init__(
         self,
         message: str = "The model response was truncated.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="LLM_TRUNCATED",
@@ -104,7 +104,7 @@ class LLMInvalidResponse(AppError):
     def __init__(
         self,
         message: str = "The model returned an invalid or empty response.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="LLM_INVALID_RESPONSE",
@@ -118,7 +118,7 @@ class TemplateNotFound(AppError):
     def __init__(
         self,
         template_id: str,
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> None:
         super().__init__(
             code="TEMPLATE_NOT_FOUND",
@@ -132,7 +132,7 @@ class OutputNotFound(AppError):
     def __init__(
         self,
         output_id: str,
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> None:
         super().__init__(
             code="OUTPUT_NOT_FOUND",
@@ -146,7 +146,7 @@ class TemplateDriftDetected(AppError):
     def __init__(
         self,
         message: str = "Template formatting drift detected beyond allowable tolerance.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="TEMPLATE_DRIFT_DETECTED",
@@ -160,7 +160,7 @@ class EditTargetNotFound(AppError):
     def __init__(
         self,
         target: str,
-        candidates: Optional[list[str]] = None,
+        candidates: list[str] | None = None,
     ) -> None:
         super().__init__(
             code="EDIT_TARGET_NOT_FOUND",
@@ -174,7 +174,7 @@ class UnsupportedFile(AppError):
     def __init__(
         self,
         message: str = "Unsupported or protected file.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="UNSUPPORTED_OR_PROTECTED_FILE",
@@ -188,7 +188,7 @@ class PayloadTooLarge(AppError):
     def __init__(
         self,
         message: str = "Uploaded file exceeds maximum allowed size.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             code="PAYLOAD_TOO_LARGE",

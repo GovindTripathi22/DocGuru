@@ -1,4 +1,3 @@
-import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
@@ -6,7 +5,7 @@ from backend.app.main import app
 
 def test_request_id_echoed_and_generated():
     client = TestClient(app)
-    
+
     # 1. Provided X-Request-ID is echoed back
     resp = client.get("/health/live", headers={"X-Request-ID": "test-req-123"})
     assert resp.headers.get("X-Request-ID") == "test-req-123"
@@ -30,7 +29,7 @@ def test_unknown_route_returns_error_envelope():
 
 def test_no_paths_or_tracebacks_in_error_responses():
     client = TestClient(app)
-    forbidden_tokens = ["Traceback", "File \"", "\\app\\", "/app/", "\\backend\\", "/backend/"]
+    forbidden_tokens = ["Traceback", 'File "', "\\app\\", "/app/", "\\backend\\", "/backend/"]
 
     # Analyze failure
     r_analyze = client.post("/api/analyze", json={"template_id": "nonexistent_temp.docx"})
@@ -40,14 +39,19 @@ def test_no_paths_or_tracebacks_in_error_responses():
         assert token not in body_analyze, f"Found '{token}' in analyze error: {body_analyze}"
 
     # Generate failure
-    r_generate = client.post("/api/generate", json={"template_id": "nonexistent_temp.docx", "prompt": "test"})
+    r_generate = client.post(
+        "/api/generate", json={"template_id": "nonexistent_temp.docx", "prompt": "test"}
+    )
     assert r_generate.status_code in (404, 422)
     body_generate = r_generate.text
     for token in forbidden_tokens:
         assert token not in body_generate, f"Found '{token}' in generate error: {body_generate}"
 
     # Validate failure
-    r_validate = client.post("/api/validate", json={"template_id": "nonexistent.docx", "generated_filename": "nonexistent.docx"})
+    r_validate = client.post(
+        "/api/validate",
+        json={"template_id": "nonexistent.docx", "generated_filename": "nonexistent.docx"},
+    )
     assert r_validate.status_code in (404, 422)
     body_validate = r_validate.text
     for token in forbidden_tokens:

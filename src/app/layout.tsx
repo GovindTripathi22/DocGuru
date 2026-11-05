@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DocGuru — Exact Template Inheritance Generator",
-  description: "Exact template inheritance and content generation system powered by Gemma",
+  title: "DocGuru — Template-aware document generator",
+  description: "Generate documents and presentations using an uploaded template, with output validation.",
 };
 
 export default function RootLayout({

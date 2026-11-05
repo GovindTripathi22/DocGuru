@@ -3,3 +3,10 @@
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
+
+## Backend conventions
+
+- Backend code targets Python 3.12 and uses the pinned dependency lock in `backend/requirements.lock`.
+- Keep request and document content out of logs. Convert expected failures into typed `AppError` responses and preserve request IDs.
+- Run `python -m ruff check backend/app backend/tests scripts`, `python -m mypy backend/app`, and `python -m pytest backend/tests -q` after backend changes.
+- Add regression coverage for behavior changes. Do not use live provider keys in the default test suite.

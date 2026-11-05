@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { backendFetch } from "@/lib/backend";
+import { HealthResponseSchema } from "@/lib/api-schemas";
+import { proxyJsonResponse } from "@/lib/api-proxy";
 
 export async function GET() {
   try {
@@ -7,15 +9,8 @@ export async function GET() {
       headers: { "Content-Type": "application/json" },
     });
 
-    if (!res.ok) {
-      return NextResponse.json(
-        { status: "error", error: "Backend health check returned non-OK" },
-        { status: res.status }
-      );
-    }
-
-    const data = await res.json();
-    return NextResponse.json(data);
+    if (!res.ok) return proxyJsonResponse(res, HealthResponseSchema);
+    return proxyJsonResponse(res, HealthResponseSchema);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to communicate with backend";
     return NextResponse.json(

@@ -1,0 +1,16 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+markers = [
+  "live: requires a live provider key and is excluded from standard CI",
+  "slow: exercises a deliberately slow or large workload",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["backend/app"]
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+

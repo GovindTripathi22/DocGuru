@@ -12,6 +12,7 @@ This guide provides step-by-step instructions for human QA testing across Micros
 4. With a valid Tavily key configured on the backend, confirm health reports research as available. Generate with Research sources left off, then opt in on a second run.
 5. In the researched document, confirm inline numbered citations match the References section. Confirm every reference title, URL, and date came from the returned source metadata. The result panel should show the retrieved sources and the warning that search results were not independently verified.
 6. Simulate an unavailable or inadequate Tavily response. The job should fail with an actionable research error instead of silently generating without research.
+7. Confirm inline previews are reported unavailable and download the artifact for review; this build intentionally has no PDF/PNG preview endpoint.
 
 **Current status:** no external provider or desktop Office check was performed in this environment. The exact remaining checks are listed in the final "Not verified in this environment" section.
 
@@ -78,21 +79,31 @@ This guide provides step-by-step instructions for human QA testing across Micros
 
 4. **Verify Health Endpoints**:
    ```bash
-   curl -i http://localhost:8000/health/live
-   # Expected: HTTP 200 {"status":"live"}
+   docker compose exec backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health/live').status)"
+   # Expected: 200
 
-   curl -i http://localhost:8000/health/ready
-   # Expected: HTTP 200 {"status":"ready", ...}
+   docker compose exec backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health/ready').read().decode())"
+   # Expected: ready is true when provider configuration and disk checks pass.
 
    curl -i http://localhost:3000
    # Expected: HTTP 200
    ```
+   The backend port is private to the Compose network; verify public health through the frontend BFF at `/api/health`.
 
 5. **Verify Security Options**:
    ```bash
    docker inspect --format '{{.HostConfig.SecurityOpt}}' $(docker compose ps -q backend)
    # Expected: [no-new-privileges:true]
    ```
+
+6. **Verify production deployment dry run and `.env` preservation**:
+   ```bash
+   before=$(sha256sum .env)
+   scripts/deploy_oracle_cloud.sh --dry-run --domain docs.example.com --email ops@example.com
+   after=$(sha256sum .env)
+   test "$before" = "$after"
+   ```
+   The script must print the loopback-only frontend proxy, HTTPS setup, firewall plan, and Oracle security-list reminder without changing `.env`.
 
 ---
 

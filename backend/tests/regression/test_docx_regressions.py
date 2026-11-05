@@ -3,7 +3,7 @@
 import os
 import subprocess
 import sys
-from pathlib import Path
+
 import pytest
 from docx import Document
 from docx.shared import Pt, RGBColor
@@ -11,7 +11,11 @@ from docx.shared import Pt, RGBColor
 from backend.app.analyzer.template_analyzer import TemplateAnalyzer
 from backend.app.engines.docx_engine import DocxEngine
 from backend.app.errors import AppError
-from backend.app.models.generation import DocumentPlan, DocumentSection, TableData, ThemeOverrideRequest
+from backend.app.models.generation import (
+    DocumentPlan,
+    DocumentSection,
+    ThemeOverrideRequest,
+)
 
 
 def test_create_document_contains_the_requested_title_and_conclusion(minimal_docx, tmp_path):
@@ -83,9 +87,14 @@ def test_cover_table_preservation_and_run_formatting(tmp_path):
     spec = TemplateAnalyzer().analyze(str(doc_path))
     engine = DocxEngine()
     out = tmp_path / "filled_cover.docx"
-    plan = DocumentPlan(title="Inhabited Report", sections=[DocumentSection(title="Sec 1", paragraphs=["New content"])])
+    plan = DocumentPlan(
+        title="Inhabited Report",
+        sections=[DocumentSection(title="Sec 1", paragraphs=["New content"])],
+    )
 
-    engine.generate_from_plan(engine.load_template(str(doc_path), spec), plan, str(out), template_mode="fill")
+    engine.generate_from_plan(
+        engine.load_template(str(doc_path), spec), plan, str(out), template_mode="fill"
+    )
 
     res_doc = Document(out)
     assert len(res_doc.tables) == 1

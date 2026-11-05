@@ -12,7 +12,7 @@ interface HealthData {
   model_name?: string;
   mode?: "live" | "demo" | "misconfigured";
   ready?: boolean;
-  capabilities?: { research?: boolean };
+  capabilities?: { research?: boolean; max_upload_mb?: number };
 }
 
 export function Header({ onHealthUpdate }: { onHealthUpdate?: (health: HealthData | null) => void }) {
@@ -100,12 +100,12 @@ export function Header({ onHealthUpdate }: { onHealthUpdate?: (health: HealthDat
               )}
               {healthStatus === "checking" && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2.5 py-0.5 text-[11px] font-medium text-zinc-400 border border-zinc-800">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Checking...
+                  <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> Checking...
                 </span>
               )}
             </div>
             <p className="text-xs text-zinc-400">
-              Verified template inheritance for DOCX and PPTX documents
+              Template property checks for DOCX and PPTX files
             </p>
           </div>
         </div>

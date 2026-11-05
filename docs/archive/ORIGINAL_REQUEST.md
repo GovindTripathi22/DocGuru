@@ -1,4 +1,6 @@
-﻿# Original User Request
+<!-- Archived reference: superseded by the current README, docs/FIX_REPORT.md, and docs/MANUAL_QA.md. This file may contain internal paths, old test counts, or claims that are no longer verified. -->
+
+# Original User Request
 
 ## Initial Request â€” 2026-08-23T10:52:28Z
 

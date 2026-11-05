@@ -1,5 +1,4 @@
 import asyncio
-import json
 from types import SimpleNamespace
 
 import httpx
@@ -19,9 +18,13 @@ def test_document_length_targets_are_exclusive_and_legacy_target_maps_to_pages()
     with pytest.raises(ValidationError):
         GenerationRequest(template_id="a" * 32, prompt="topic", target_pages=51)
     with pytest.raises(ValidationError):
-        GenerationRequest(template_id="a" * 32, prompt="topic", document_type="docx", target_slides=5)
+        GenerationRequest(
+            template_id="a" * 32, prompt="topic", document_type="docx", target_slides=5
+        )
     with pytest.raises(ValidationError):
-        GenerationRequest(template_id="a" * 32, prompt="topic", document_type="pptx", target_pages=5)
+        GenerationRequest(
+            template_id="a" * 32, prompt="topic", document_type="pptx", target_pages=5
+        )
 
     numeric = GenerationRequest(template_id="a" * 32, prompt="topic", target_pages=8)
     legacy = GenerationRequest(template_id="a" * 32, prompt="topic", target_pages_or_slides=4)
@@ -54,10 +57,10 @@ def test_detail_presets_and_page_targets_create_monotonic_word_budgets():
 
 
 def test_provider_calls_obey_global_concurrency_limit_without_blocking_event_loop(monkeypatch):
+    import backend.app.ai.gemma_client as gemma_module
     from backend.app.ai.gemma_client import GemmaClient
     from backend.app.config import settings
     from backend.app.llm.base import LLMResult
-    import backend.app.ai.gemma_client as gemma_module
 
     monkeypatch.setattr(settings, "LLM_MAX_CONCURRENCY", 3)
     active = 0
@@ -91,10 +94,9 @@ def test_provider_calls_obey_global_concurrency_limit_without_blocking_event_loo
 
         pulse = asyncio.create_task(heartbeat())
         started = loop.time()
-        results = await asyncio.gather(*[
-            client.generate_structured_json("system", f"request {index}")
-            for index in range(20)
-        ])
+        results = await asyncio.gather(
+            *[client.generate_structured_json("system", f"request {index}") for index in range(20)]
+        )
         elapsed = loop.time() - started
         finished.set()
         await pulse
@@ -132,7 +134,13 @@ def test_tavily_search_returns_validated_citable_sources():
             200,
             json={
                 "results": [
-                    {"title": f"Source {i}", "url": f"https://example.org/{i}", "content": f"Evidence {i}", "published_date": "2026-01-01", "score": 0.9}
+                    {
+                        "title": f"Source {i}",
+                        "url": f"https://example.org/{i}",
+                        "content": f"Evidence {i}",
+                        "published_date": "2026-01-01",
+                        "score": 0.9,
+                    }
                     for i in range(1, 4)
                 ]
             },
@@ -155,10 +163,30 @@ def test_tavily_selects_highest_scoring_sources_first():
             200,
             json={
                 "results": [
-                    {"title": "Marginal result", "url": "https://example.org/marginal", "content": "Weak match", "score": 0.05},
-                    {"title": "Strong match", "url": "https://example.org/strong", "content": "Relevant evidence", "score": 0.98},
-                    {"title": "Useful match", "url": "https://example.org/useful", "content": "Relevant context", "score": 0.75},
-                    {"title": "Another match", "url": "https://example.org/another", "content": "Relevant details", "score": 0.61},
+                    {
+                        "title": "Marginal result",
+                        "url": "https://example.org/marginal",
+                        "content": "Weak match",
+                        "score": 0.05,
+                    },
+                    {
+                        "title": "Strong match",
+                        "url": "https://example.org/strong",
+                        "content": "Relevant evidence",
+                        "score": 0.98,
+                    },
+                    {
+                        "title": "Useful match",
+                        "url": "https://example.org/useful",
+                        "content": "Relevant context",
+                        "score": 0.75,
+                    },
+                    {
+                        "title": "Another match",
+                        "url": "https://example.org/another",
+                        "content": "Relevant details",
+                        "score": 0.61,
+                    },
                 ]
             },
         )
@@ -176,7 +204,9 @@ def test_tavily_opt_in_without_key_fails_clearly():
 
 
 def test_tavily_search_failure_does_not_silently_downgrade():
-    service = TavilyResearchService(api_key="test-key", client_factory=lambda **_kwargs: _FailingClient())
+    service = TavilyResearchService(
+        api_key="test-key", client_factory=lambda **_kwargs: _FailingClient()
+    )
     with pytest.raises(AppError) as raised:
         asyncio.run(service.search("topic", []))
     assert raised.value.code == "RESEARCH_UNAVAILABLE"
@@ -197,14 +227,20 @@ class _ScriptedClient:
     def __init__(self):
         self.calls = []
 
-    async def generate_structured_json(self, system_prompt, user_prompt, response_schema=None, max_tokens=None):
+    async def generate_structured_json(
+        self, system_prompt, user_prompt, response_schema=None, max_tokens=None
+    ):
         self.calls.append((system_prompt, user_prompt, max_tokens))
         if "DOCUMENT_OUTLINE" in system_prompt:
             titles = ["Context", "Analysis", "Recommendations"]
             return {
                 "title": "Grid Resilience",
                 "sections": [
-                    {"title": title, "goal": f"Explain {title.lower()} of grid resilience", "target_words": 180}
+                    {
+                        "title": title,
+                        "goal": f"Explain {title.lower()} of grid resilience",
+                        "target_words": 180,
+                    }
                     for title in titles
                 ],
             }
@@ -213,7 +249,9 @@ class _ScriptedClient:
         if "DOCUMENT_SECTION" in system_prompt:
             title = _extract(user_prompt, "Section title:", "Goal:")
             body = _varied_body("grid resilience")
-            return {"section": {"title": title, "paragraphs": [body], "bullets": [], "citations": []}}
+            return {
+                "section": {"title": title, "paragraphs": [body], "bullets": [], "citations": []}
+            }
         raise AssertionError("Unexpected LLM stage")
 
 
@@ -223,11 +261,26 @@ def _extract(text, start, end):
 
 def _varied_body(topic, count=20):
     aspects = [
-        "planning assumptions", "community priorities", "infrastructure needs", "risk ownership",
-        "operational constraints", "maintenance planning", "evidence quality", "decision criteria",
-        "funding choices", "staffing needs", "service continuity", "monitoring design",
-        "coordination practices", "recovery sequencing", "public communication", "resource dependencies",
-        "governance models", "evaluation methods", "implementation timing", "uncertainty management",
+        "planning assumptions",
+        "community priorities",
+        "infrastructure needs",
+        "risk ownership",
+        "operational constraints",
+        "maintenance planning",
+        "evidence quality",
+        "decision criteria",
+        "funding choices",
+        "staffing needs",
+        "service continuity",
+        "monitoring design",
+        "coordination practices",
+        "recovery sequencing",
+        "public communication",
+        "resource dependencies",
+        "governance models",
+        "evaluation methods",
+        "implementation timing",
+        "uncertainty management",
     ]
     return " ".join(
         f"A relevant discussion of {topic} should evaluate {aspect}, explain its implications for the intended audience, and identify evidence or decisions still needed."
@@ -248,7 +301,9 @@ def test_document_planner_uses_outline_then_section_calls_and_reports_real_progr
     plan = asyncio.run(
         planner.plan_document(
             "Write about grid resilience",
-            SimpleNamespace(available_heading_styles=["Heading 1"], extracted_rules=[], document_outline=[]),
+            SimpleNamespace(
+                available_heading_styles=["Heading 1"], extracted_rules=[], document_outline=[]
+            ),
             target_pages=2,
             include_images=False,
             on_progress=on_progress,
@@ -277,7 +332,9 @@ class _TwelveSectionClient:
         self.max_active_sections = 0
         self.truncate_once = truncate_once
 
-    async def generate_structured_json(self, system_prompt, user_prompt, response_schema=None, max_tokens=None):
+    async def generate_structured_json(
+        self, system_prompt, user_prompt, response_schema=None, max_tokens=None
+    ):
         self.calls.append((system_prompt, user_prompt, max_tokens))
         if "DOCUMENT_OUTLINE" in system_prompt:
             if self.truncate_once:
@@ -287,7 +344,10 @@ class _TwelveSectionClient:
                 "title": "Climate Adaptation",
                 "target_audience": "Public sector planners",
                 "sections": [
-                    {"title": f"Planning Area {index + 1}", "goal": "Assess climate adaptation choices"}
+                    {
+                        "title": f"Planning Area {index + 1}",
+                        "goal": "Assess climate adaptation choices",
+                    }
                     for index in range(12)
                 ],
             }
@@ -334,7 +394,9 @@ def test_twelve_sections_use_bounded_writer_and_quality_calls_with_real_progress
     assert len(plan.sections) == 12
     assert len(planner.client.calls) == 25
     assert planner.client.max_active_sections == 2
-    assert [done for stage, done, _total in progress if stage == "writing_sections"] == list(range(13))
+    assert [done for stage, done, _total in progress if stage == "writing_sections"] == list(
+        range(13)
+    )
     assert all(total == 12 for _stage, _done, total in progress)
 
 
@@ -365,7 +427,9 @@ def test_truncated_outline_is_retried_and_empty_outline_is_rejected():
         asyncio.run(
             planner.plan_document(
                 "Create a climate adaptation planning report",
-                SimpleNamespace(available_heading_styles=[], extracted_rules=[], document_outline=[]),
+                SimpleNamespace(
+                    available_heading_styles=[], extracted_rules=[], document_outline=[]
+                ),
                 include_images=False,
             )
         )
@@ -392,7 +456,9 @@ def test_unsupported_numerical_claim_gets_one_targeted_section_repair():
                 body = "In 2025, " + body
             section = {"title": "Planning", "paragraphs": [body], "bullets": []}
             if "For the final section" in system_prompt:
-                section["conclusion"] = "Climate adaptation planning should follow the stated goals."
+                section["conclusion"] = (
+                    "Climate adaptation planning should follow the stated goals."
+                )
             return {"section": section}
 
     planner = DocumentPlanner()
@@ -424,12 +490,19 @@ def test_failed_structured_quality_review_gets_one_targeted_repair():
             if "DOCUMENT_OUTLINE" in system_prompt:
                 return {
                     "title": "Grid Resilience",
-                    "sections": [{"title": "Planning", "goal": "Explain grid resilience planning choices"}],
+                    "sections": [
+                        {"title": "Planning", "goal": "Explain grid resilience planning choices"}
+                    ],
                 }
             if "DOCUMENT_SECTION_QUALITY" in system_prompt:
                 self.reviews += 1
                 if self.reviews == 1:
-                    return {"passed": False, "issues": ["Connect the implementation choices to the stated planning goal."]}
+                    return {
+                        "passed": False,
+                        "issues": [
+                            "Connect the implementation choices to the stated planning goal."
+                        ],
+                    }
                 return {"passed": True, "issues": []}
             body = _varied_body("grid resilience")
             if "REPAIR:" in system_prompt:
@@ -463,9 +536,9 @@ def test_failed_structured_quality_review_gets_one_targeted_repair():
 
 
 def test_research_plan_citations_are_limited_to_returned_sources(monkeypatch):
+    import backend.app.research.tavily as tavily_module
     from backend.app.ai.planner import DocumentPlanner
     from backend.app.models.generation import ResearchSource
-    import backend.app.research.tavily as tavily_module
 
     source = ResearchSource(
         id="S1",
@@ -526,10 +599,12 @@ def test_tavily_insufficient_sources_returns_explicit_error():
     respx.post("https://api.tavily.com/search").mock(
         return_value=httpx.Response(
             200,
-            json={"results": [
-                {"title": "Source 1", "url": "https://example.org/1", "content": "Evidence"},
-                {"title": "Source 2", "url": "https://example.org/2", "content": "Evidence"},
-            ]},
+            json={
+                "results": [
+                    {"title": "Source 1", "url": "https://example.org/1", "content": "Evidence"},
+                    {"title": "Source 2", "url": "https://example.org/2", "content": "Evidence"},
+                ]
+            },
         )
     )
     with pytest.raises(AppError) as raised:

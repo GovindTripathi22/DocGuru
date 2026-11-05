@@ -70,3 +70,14 @@ test("research is only sent for document creation when opted in", () => {
   assert.equal(creation.research_enabled, true);
   assert.equal(edit.research_enabled, false);
 });
+
+test("sends only the server-resolved indexes for enabled template rules", () => {
+  const payload = buildGenerationPayload("template-id", "docx", {
+    prompt: "Write a guide",
+    mode: "create_document",
+    detailLevel: "medium",
+    enabledRuleIndexes: [0, 2],
+  });
+
+  assert.deepEqual(payload.enabled_rule_indices, [0, 2]);
+});

@@ -4,14 +4,13 @@ import asyncio
 import io
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+
 import httpx
 from PIL import Image
 
 from ..config import settings
 from .cache import ImageCache
-from .models import ImageCandidate
 from .placeholder import generate_neutral_placeholder
 from .provider import ImageProvider, PexelsProvider, UnsplashProvider, WikimediaProvider
 
@@ -28,7 +27,7 @@ ALLOWED_IMAGE_HOSTS = {
 
 
 class ImageService:
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         cache_path = cache_dir or (settings.DATA_DIR / "cache" / "images")
         self.cache = ImageCache(
             cache_dir=cache_path,
@@ -36,7 +35,7 @@ class ImageService:
         )
         self.placeholder_dir = settings.DATA_DIR / "cache" / "placeholders"
         self.placeholder_dir.mkdir(parents=True, exist_ok=True)
-        self._provider: Optional[ImageProvider] = None
+        self._provider: ImageProvider | None = None
         self._semaphore = asyncio.Semaphore(4)
 
     @property
@@ -60,9 +59,9 @@ class ImageService:
         mode: str = "search",  # "off", "search", "placeholder"
         width: int = 800,
         height: int = 450,
-        caption: Optional[str] = None,
-        warnings: Optional[List[str]] = None,
-    ) -> Optional[str]:
+        caption: str | None = None,
+        warnings: list[str] | None = None,
+    ) -> str | None:
         """
         Coordinates real image search, caching, downloading, and placeholder fallback.
         Returns the absolute local path to a JPEG image file, or None if skipped.
@@ -73,10 +72,24 @@ class ImageService:
         if mode == "off":
             return None
 
-        offline_mode = getattr(settings, "OFFLINE_MODE", False)
-        if offline_mode or mode == "placeholder":
+        if mode == "placeholder":
+            if not settings.IMAGE_PLACEHOLDERS:
+                if warnings is not None:
+                    warnings.append("images_skipped_placeholders_disabled")
+                return None
             # Generate unbranded neutral placeholder
             key = self.cache.compute_key("placeholder", clean_query, width, height)
+            placeholder_path = self.placeholder_dir / f"ph_{key}_{width}x{height}.jpg"
+            if not placeholder_path.exists():
+                generate_neutral_placeholder(effective_caption, placeholder_path, width, height)
+            return str(placeholder_path)
+
+        if settings.OFFLINE_MODE:
+            if not settings.IMAGE_PLACEHOLDERS:
+                if warnings is not None:
+                    warnings.append("images_skipped_offline_placeholders_disabled")
+                return None
+            key = self.cache.compute_key("offline-placeholder", clean_query, width, height)
             placeholder_path = self.placeholder_dir / f"ph_{key}_{width}x{height}.jpg"
             if not placeholder_path.exists():
                 generate_neutral_placeholder(effective_caption, placeholder_path, width, height)
@@ -110,21 +123,22 @@ class ImageService:
             if image_path:
                 return image_path
 
-            # Fallback to placeholder on failure or timeout
+            if warnings is not None:
+                warnings.append(f"images_skipped_no_provider:{clean_query[:30]}")
+            if not settings.IMAGE_PLACEHOLDERS:
+                return None
             placeholder_path = self.placeholder_dir / f"ph_{key}_{width}x{height}.jpg"
             if not placeholder_path.exists():
                 generate_neutral_placeholder(effective_caption, placeholder_path, width, height)
-            if warnings is not None:
-                warnings.append(f"images_skipped_no_provider:{clean_query[:30]}")
             return str(placeholder_path)
 
     async def _search_real_image(
         self,
         query: str,
-        dest_path: Optional[Path] = None,
+        dest_path: Path | None = None,
         width: int = 800,
         height: int = 450,
-    ) -> Optional[str]:
+    ) -> str | None:
         provider_name = self.provider.__class__.__name__.lower().replace("provider", "")
         key = self.cache.compute_key(provider_name, query, width, height)
         return await self._search_and_download(
@@ -144,7 +158,7 @@ class ImageService:
         width: int,
         height: int,
         caption: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         try:
             candidates = await asyncio.wait_for(
                 self.provider.search(query, width, height),
@@ -156,36 +170,37 @@ class ImageService:
             candidate = candidates[0]
             # Validate host SSRF allow-list
             parsed = urlparse(candidate.url)
-            if parsed.netloc.lower() not in ALLOWED_IMAGE_HOSTS:
+            if parsed.scheme != "https" or parsed.netloc.lower() not in ALLOWED_IMAGE_HOSTS:
                 logger.warning("Rejecting image download from untrusted host: %s", parsed.netloc)
                 return None
 
-            async with httpx.AsyncClient(timeout=settings.IMAGE_TIMEOUT_SEC, follow_redirects=True) as client:
-                resp = await client.get(candidate.url)
-                if resp.status_code != 200:
-                    return None
-
-                content_type = resp.headers.get("content-type", "")
-                if not content_type.startswith("image/"):
-                    return None
-
-                if len(resp.content) > 15 * 1024 * 1024:  # 15 MB limit
+            async with httpx.AsyncClient(
+                timeout=settings.IMAGE_TIMEOUT_SEC, follow_redirects=False
+            ) as client:
+                raw_content = await self._read_image_response(client, candidate.url)
+                if raw_content is None:
                     return None
 
                 # Pillow validation and sanitization
-                processed_bytes = self._process_image(resp.content, width, height)
+                processed_bytes = self._process_image(raw_content, width, height)
                 if not processed_bytes:
                     return None
 
                 # Notify download location if Unsplash
-                if candidate.download_location and isinstance(self.provider, UnsplashProvider):
+                attribution_url = urlparse(candidate.download_location or "")
+                if (
+                    candidate.download_location
+                    and attribution_url.scheme == "https"
+                    and attribution_url.netloc.lower() == "api.unsplash.com"
+                    and isinstance(self.provider, UnsplashProvider)
+                ):
                     try:
                         await client.get(
                             candidate.download_location,
                             headers={"Authorization": f"Client-ID {self.provider.access_key}"},
                         )
-                    except Exception:
-                        pass
+                    except httpx.HTTPError as exc:
+                        logger.debug("Unsplash download attribution callback failed: %s", exc)
 
                 meta = {
                     "query": query,
@@ -197,14 +212,35 @@ class ImageService:
                 }
                 saved_path = self.cache.put(key, processed_bytes, meta)
                 return str(saved_path)
-        except Exception as e:
+        except (httpx.HTTPError, OSError, TimeoutError, TypeError, ValueError) as e:
             logger.warning("Failed to search and download image for '%s': %s", query, e)
             return None
 
-    def _process_image(self, raw_bytes: bytes, target_w: int, target_h: int) -> Optional[bytes]:
+    async def _read_image_response(self, client: httpx.AsyncClient, url: str) -> bytes | None:
+        """Stream an image with a strict byte cap and no unvalidated redirects."""
+        max_bytes = 15 * 1024 * 1024
+        async with client.stream("GET", url) as response:
+            if response.status_code != 200:
+                return None
+            if not response.headers.get("content-type", "").lower().startswith("image/"):
+                return None
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > max_bytes:
+                return None
+
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > max_bytes:
+                    return None
+                chunks.append(chunk)
+            return b"".join(chunks)
+
+    def _process_image(self, raw_bytes: bytes, target_w: int, target_h: int) -> bytes | None:
         try:
             bio = io.BytesIO(raw_bytes)
-            img = Image.open(bio)
+            img: Image.Image = Image.open(bio)
             img.verify()  # Validate image integrity
 
             # Reopen after verify
@@ -238,11 +274,10 @@ class ImageService:
             out_buf = io.BytesIO()
             img.save(out_buf, format="JPEG", quality=88, optimize=True)
             return out_buf.getvalue()
-        except Exception as e:
+        except (OSError, SyntaxError, ValueError) as e:
             logger.warning("Image processing failed: %s", e)
             return None
 
 
 image_service = ImageService()
 __all__ = ["ImageService", "image_service"]
-

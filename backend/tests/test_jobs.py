@@ -2,12 +2,12 @@
 
 import json
 import time
-from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.config import settings
-from backend.app.jobs import JobProgress, job_manager
+from backend.app.jobs import job_manager
 from backend.app.main import app
 
 
@@ -23,12 +23,23 @@ def client():
 def test_generate_returns_202_and_polls_to_success(client, sample_docx_template):
     # 1. Upload template
     with open(sample_docx_template, "rb") as f:
-        up_resp = client.post("/api/upload", files={"file": ("test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
+        up_resp = client.post(
+            "/api/upload",
+            files={
+                "file": (
+                    "test.docx",
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
     assert up_resp.status_code == 200
     template_id = up_resp.json()["template_id"]
 
     # 2. POST /api/generate returns 202 with job_id
-    gen_resp = client.post("/api/generate", json={"template_id": template_id, "prompt": "Quarterly overview"})
+    gen_resp = client.post(
+        "/api/generate", json={"template_id": template_id, "prompt": "Quarterly overview"}
+    )
     assert gen_resp.status_code == 202
     data = gen_resp.json()
     assert "job_id" in data
@@ -64,10 +75,21 @@ def test_generate_returns_202_and_polls_to_success(client, sample_docx_template)
 def test_generate_sync_wait_mode(client, sample_docx_template):
     # Test ?wait=true synchronous mode for tests/CLI
     with open(sample_docx_template, "rb") as f:
-        up_resp = client.post("/api/upload", files={"file": ("sync_test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
+        up_resp = client.post(
+            "/api/upload",
+            files={
+                "file": (
+                    "sync_test.docx",
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
     template_id = up_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate?wait=true", json={"template_id": template_id, "prompt": "Summary report"})
+    gen_resp = client.post(
+        "/api/generate?wait=true", json={"template_id": template_id, "prompt": "Summary report"}
+    )
     assert gen_resp.status_code == 200
     data = gen_resp.json()
     assert data["success"] is True
@@ -76,10 +98,21 @@ def test_generate_sync_wait_mode(client, sample_docx_template):
 
 def test_job_cancellation(client, sample_docx_template):
     with open(sample_docx_template, "rb") as f:
-        up_resp = client.post("/api/upload", files={"file": ("cancel_test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
+        up_resp = client.post(
+            "/api/upload",
+            files={
+                "file": (
+                    "cancel_test.docx",
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
     template_id = up_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate", json={"template_id": template_id, "prompt": "Cancelled test"})
+    gen_resp = client.post(
+        "/api/generate", json={"template_id": template_id, "prompt": "Cancelled test"}
+    )
     assert gen_resp.status_code == 202
     job_id = gen_resp.json()["job_id"]
 
@@ -117,7 +150,16 @@ def test_interrupted_job_recovery_on_startup(tmp_path):
 
 def test_template_and_output_delete_endpoints(client, sample_docx_template):
     with open(sample_docx_template, "rb") as f:
-        up_resp = client.post("/api/upload", files={"file": ("del_test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
+        up_resp = client.post(
+            "/api/upload",
+            files={
+                "file": (
+                    "del_test.docx",
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
     template_id = up_resp.json()["template_id"]
 
     # Verify template get endpoint

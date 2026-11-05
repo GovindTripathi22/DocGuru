@@ -2,18 +2,26 @@
 
 import hashlib
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 import zipfile
+from pathlib import Path
+from typing import Any
+
 from lxml import etree
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+
+def _xpath_elements(root: etree._Element, expression: str) -> list[etree._Element]:
+    """Return element results only; XPath can also return scalar values."""
+    results: object = root.xpath(expression)
+    if not isinstance(results, list):
+        return []
+    return [item for item in results if isinstance(item, etree._Element)]
+
+
 # Volatile attribute namespaces and names stripped during C14N canonicalization
-VOLATILE_ATTR_PREFIXES = (
-    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rsid",
-)
+VOLATILE_ATTR_PREFIXES = ("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rsid",)
 VOLATILE_ATTR_NAMES = {
     "{http://schemas.microsoft.com/office/word/2010/wordml}paraId",
     "{http://schemas.microsoft.com/office/word/2010/wordml}textId",
@@ -44,13 +52,16 @@ def canonicalize_xml(xml_bytes: bytes, strip_volatile_tags: bool = True) -> byte
                 # Strip volatile attributes
                 to_remove = []
                 for attr in elem.attrib:
-                    if any(attr.startswith(pfx) for pfx in VOLATILE_ATTR_PREFIXES) or attr in VOLATILE_ATTR_NAMES:
+                    if (
+                        any(attr.startswith(pfx) for pfx in VOLATILE_ATTR_PREFIXES)
+                        or attr in VOLATILE_ATTR_NAMES
+                    ):
                         to_remove.append(attr)
                 for attr in to_remove:
                     del elem.attrib[attr]
 
         return etree.tostring(tree, method="c14n", exclusive=True, with_comments=False)
-    except Exception as e:
+    except (etree.XMLSyntaxError, TypeError, ValueError) as e:
         logger.debug("XML canonicalization fallback to raw bytes: %s", e)
         return xml_bytes
 
@@ -60,8 +71,8 @@ def hash_bytes(data: bytes) -> str:
 
 
 class PackageFingerprint(BaseModel):
-    components: Dict[str, str] = Field(default_factory=dict)
-    details: Dict[str, Any] = Field(default_factory=dict)
+    components: dict[str, str] = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)
     style_hash: str = ""
 
 
@@ -76,8 +87,8 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
     ext = path.suffix.lower()
     doc_type = "docx" if ext == ".docx" else ("pptx" if ext == ".pptx" else "unknown")
 
-    components: Dict[str, str] = {}
-    details: Dict[str, Any] = {}
+    components: dict[str, str] = {}
+    details: dict[str, Any] = {}
 
     try:
         with zipfile.ZipFile(path, "r") as zf:
@@ -92,25 +103,33 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
                     try:
                         parser = etree.XMLParser(remove_blank_text=True)
                         st_tree = etree.fromstring(c14n_styles, parser=parser)
-                        doc_defs = st_tree.xpath("//*[local-name()='docDefaults']")
+                        doc_defs = _xpath_elements(st_tree, "//*[local-name()='docDefaults']")
                         if doc_defs:
-                            components["doc_defaults"] = hash_bytes(etree.tostring(doc_defs[0], method="c14n"))
-                    except Exception:
-                        pass
+                            components["doc_defaults"] = hash_bytes(
+                                etree.tostring(doc_defs[0], method="c14n")
+                            )
+                    except (etree.XMLSyntaxError, TypeError, ValueError) as exc:
+                        logger.debug("Could not extract DOCX defaults: %s", exc)
 
                 # 2. Numbering
                 if "word/numbering.xml" in namelist:
-                    components["numbering"] = hash_bytes(canonicalize_xml(zf.read("word/numbering.xml")))
+                    components["numbering"] = hash_bytes(
+                        canonicalize_xml(zf.read("word/numbering.xml"))
+                    )
 
                 # 3. Theme
-                theme_parts = sorted([n for n in namelist if n.startswith("word/theme/") and n.endswith(".xml")])
+                theme_parts = sorted(
+                    [n for n in namelist if n.startswith("word/theme/") and n.endswith(".xml")]
+                )
                 theme_bytes = b"".join(canonicalize_xml(zf.read(tp)) for tp in theme_parts)
                 if theme_bytes:
                     components["theme"] = hash_bytes(theme_bytes)
 
                 # 4. Font Table
                 if "word/fontTable.xml" in namelist:
-                    components["font_table"] = hash_bytes(canonicalize_xml(zf.read("word/fontTable.xml")))
+                    components["font_table"] = hash_bytes(
+                        canonicalize_xml(zf.read("word/fontTable.xml"))
+                    )
 
                 # 5. Settings compat
                 if "word/settings.xml" in namelist:
@@ -125,8 +144,10 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
                                 parent = elem.getparent()
                                 if parent is not None:
                                     parent.remove(elem)
-                        components["settings_compat"] = hash_bytes(etree.tostring(tree, method="c14n"))
-                    except Exception:
+                        components["settings_compat"] = hash_bytes(
+                            etree.tostring(tree, method="c14n")
+                        )
+                    except (etree.XMLSyntaxError, TypeError, ValueError):
                         components["settings_compat"] = hash_bytes(canonicalize_xml(raw_settings))
 
                 # 6. Page setup (sectPr in document order)
@@ -134,15 +155,23 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
                     try:
                         parser = etree.XMLParser(remove_blank_text=True)
                         doc_tree = etree.fromstring(zf.read("word/document.xml"), parser=parser)
-                        sect_prs = doc_tree.xpath("//*[local-name()='sectPr']")
-                        page_setup_bytes = b"".join(canonicalize_xml(etree.tostring(sp)) for sp in sect_prs)
+                        sect_prs = _xpath_elements(doc_tree, "//*[local-name()='sectPr']")
+                        page_setup_bytes = b"".join(
+                            canonicalize_xml(etree.tostring(sp)) for sp in sect_prs
+                        )
                         if page_setup_bytes:
                             components["page_setup"] = hash_bytes(page_setup_bytes)
-                    except Exception as e:
+                    except (etree.XMLSyntaxError, KeyError, TypeError, ValueError) as e:
                         logger.debug("Failed to extract page_setup: %s", e)
 
                 # 7. Headers & Footers
-                hf_parts = sorted([n for n in namelist if (n.startswith("word/header") or n.startswith("word/footer")) and n.endswith(".xml")])
+                hf_parts = sorted(
+                    [
+                        n
+                        for n in namelist
+                        if (n.startswith(("word/header", "word/footer"))) and n.endswith(".xml")
+                    ]
+                )
                 hf_bytes = b"".join(canonicalize_xml(zf.read(hp)) for hp in hf_parts)
                 if hf_bytes:
                     components["headers_footers"] = hash_bytes(hf_bytes)
@@ -153,33 +182,55 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
                     try:
                         parser = etree.XMLParser(remove_blank_text=True)
                         pres_tree = etree.fromstring(zf.read("ppt/presentation.xml"), parser=parser)
-                        sz_elems = pres_tree.xpath("//*[local-name()='sldSz' or local-name()='notesSz']")
+                        sz_elems = _xpath_elements(
+                            pres_tree, "//*[local-name()='sldSz' or local-name()='notesSz']"
+                        )
                         sz_bytes = b"".join(canonicalize_xml(etree.tostring(e)) for e in sz_elems)
                         if sz_bytes:
                             components["slide_size"] = hash_bytes(sz_bytes)
-                    except Exception:
-                        pass
+                    except (etree.XMLSyntaxError, TypeError, ValueError) as exc:
+                        logger.debug("Could not extract PPTX slide size: %s", exc)
 
                 # 2. Masters
-                master_parts = sorted([n for n in namelist if n.startswith("ppt/slideMasters/") and n.endswith(".xml")])
+                master_parts = sorted(
+                    [
+                        n
+                        for n in namelist
+                        if n.startswith("ppt/slideMasters/") and n.endswith(".xml")
+                    ]
+                )
                 m_bytes = b"".join(canonicalize_xml(zf.read(p)) for p in master_parts)
                 if m_bytes:
                     components["masters"] = hash_bytes(m_bytes)
 
                 # 3. Layouts
-                layout_parts = sorted([n for n in namelist if n.startswith("ppt/slideLayouts/") and n.endswith(".xml")])
+                layout_parts = sorted(
+                    [
+                        n
+                        for n in namelist
+                        if n.startswith("ppt/slideLayouts/") and n.endswith(".xml")
+                    ]
+                )
                 l_bytes = b"".join(canonicalize_xml(zf.read(p)) for p in layout_parts)
                 if l_bytes:
                     components["layouts"] = hash_bytes(l_bytes)
 
                 # 4. Themes
-                theme_parts = sorted([n for n in namelist if n.startswith("ppt/theme/") and n.endswith(".xml")])
+                theme_parts = sorted(
+                    [n for n in namelist if n.startswith("ppt/theme/") and n.endswith(".xml")]
+                )
                 t_bytes = b"".join(canonicalize_xml(zf.read(p)) for p in theme_parts)
                 if t_bytes:
                     components["themes"] = hash_bytes(t_bytes)
 
                 # 5. Notes / Handout Masters
-                nm_parts = sorted([n for n in namelist if n.startswith("ppt/notesMasters/") or n.startswith("ppt/handoutMasters/")])
+                nm_parts = sorted(
+                    [
+                        n
+                        for n in namelist
+                        if n.startswith(("ppt/notesMasters/", "ppt/handoutMasters/"))
+                    ]
+                )
                 if nm_parts:
                     nm_bytes = b"".join(canonicalize_xml(zf.read(p)) for p in nm_parts)
                     components["notes_master"] = hash_bytes(nm_bytes)
@@ -193,12 +244,12 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
             details=details,
             style_hash=style_hash,
         )
-    except Exception as e:
+    except (OSError, TypeError, ValueError, zipfile.BadZipFile, etree.XMLSyntaxError) as e:
         logger.warning("Failed to fingerprint package %s: %s", package_path, e)
         return PackageFingerprint()
 
 
-def compute_package_fingerprint(package_path: str | Path, doc_type: Optional[str] = None) -> str:
+def compute_package_fingerprint(package_path: str | Path, doc_type: str | None = None) -> str:
     """Legacy shim returning 64-char or 16-char style hash."""
     fp = fingerprint_package(package_path)
     return fp.style_hash

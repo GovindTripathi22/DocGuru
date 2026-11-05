@@ -33,8 +33,14 @@ def test_settings_misconfigured_mode_when_key_missing():
 
 def test_settings_gemma_api_key_deprecated_alias(caplog):
     import logging
+
     with caplog.at_level(logging.WARNING):
-        s = Settings(_env_file=None, MODEL_PROVIDER="google_ai", GEMINI_API_KEY="", GEMMA_API_KEY="legacy-key")
+        s = Settings(
+            _env_file=None,
+            MODEL_PROVIDER="google_ai",
+            GEMINI_API_KEY="",
+            GEMMA_API_KEY="legacy-key",
+        )
         assert s.api_key == "legacy-key"
         assert s.mode == "live"
         assert any("deprecated" in record.message for record in caplog.records)

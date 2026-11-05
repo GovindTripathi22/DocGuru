@@ -1,21 +1,26 @@
-from typing import List, Dict, Any, Optional, Tuple
 import copy
 import difflib
+import logging
+import unicodedata
 from pathlib import Path
-import docx
-from docx import Document
-from docx.oxml import OxmlElement, parse_xml
-from docx.oxml.ns import qn, nsdecls
-from docx.shared import Inches, Pt, RGBColor
-from docx.text.paragraph import Paragraph
-from docx.table import Table, _Cell, _Row
+from typing import Any, cast
 
-from .style_lock import LockedTemplate, StyleLock, StyleLockViolationError
-from .list_resolver import ListStyleResolver
+from docx import Document
+from docx.document import Document as DocumentObject
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, RGBColor
+from docx.table import Table, _Cell
+from docx.text.paragraph import Paragraph
+
 from ..config import settings
 from ..errors import AppError
-from ..models.generation import DocumentPlan, DocumentSection, TableData, ThemeOverrideRequest
+from ..models.generation import DocumentPlan, DocumentSection, ThemeOverrideRequest
 from ..models.template_spec import TemplateSpecification
+from .list_resolver import ListStyleResolver
+from .style_lock import LockedTemplate
+
+logger = logging.getLogger(__name__)
 
 
 class DocxEngine:
@@ -31,7 +36,7 @@ class DocxEngine:
         doc = Document(file_path)
         return LockedTemplate(docx_document=doc, template_path=file_path, spec=spec)
 
-    def clear_body_content_preserving_structure(self, doc: Document) -> List[Any]:
+    def clear_body_content_preserving_structure(self, doc: DocumentObject) -> list[Any]:
         """
         Clears existing body paragraphs and tables while preserving:
         - Section properties (w:sectPr at bottom of w:body)
@@ -55,18 +60,24 @@ class DocxEngine:
         self,
         locked_doc: LockedTemplate,
         text: str,
-        requested_style: Optional[str] = None,
-        warnings: Optional[List[str]] = None,
+        requested_style: str | None = None,
+        warnings: list[str] | None = None,
     ) -> Paragraph:
         doc = locked_doc.doc
-        validated_style = locked_doc.validate_style_allowed(requested_style) if requested_style else None
+        validated_style = (
+            locked_doc.validate_style_allowed(requested_style) if requested_style else None
+        )
 
         if validated_style:
             try:
                 p = doc.add_paragraph(text, style=doc.styles[validated_style])
+                self._apply_multilingual_properties(p, text, locked_doc)
                 return p
-            except Exception:
-                pass
+            except (KeyError, TypeError, ValueError):
+                logger.warning(
+                    "Heading style %s could not be applied; using inherited body formatting.",
+                    validated_style,
+                )
 
         # Fallback to bold paragraph with default style
         if warnings is not None and requested_style:
@@ -74,44 +85,163 @@ class DocxEngine:
         p = doc.add_paragraph()
         run = p.add_run(text)
         run.bold = True
+        self._apply_multilingual_properties(p, text, locked_doc)
         return p
 
     def insert_paragraph(
         self,
         locked_doc: LockedTemplate,
         text: str,
-        requested_style: Optional[str] = None,
+        requested_style: str | None = None,
+        warnings: list[str] | None = None,
     ) -> Paragraph:
         doc = locked_doc.doc
-        validated_style = locked_doc.validate_style_allowed(requested_style) if requested_style else None
+        validated_style = (
+            locked_doc.validate_style_allowed(requested_style) if requested_style else None
+        )
 
         if validated_style:
             try:
-                return doc.add_paragraph(text, style=doc.styles[validated_style])
-            except Exception:
-                pass
+                paragraph = doc.add_paragraph(text, style=doc.styles[validated_style])
+                self._apply_multilingual_properties(paragraph, text, locked_doc)
+                return paragraph
+            except (KeyError, TypeError, ValueError):
+                if warnings is not None:
+                    warnings.append(f"paragraph_style_fallback:{validated_style}")
 
-        return doc.add_paragraph(text)
+        paragraph = doc.add_paragraph(text)
+        self._apply_multilingual_properties(paragraph, text, locked_doc)
+        return paragraph
 
     def insert_bullet_point(
         self,
         locked_doc: LockedTemplate,
         text: str,
         level: int = 0,
-        warnings: Optional[List[str]] = None,
+        warnings: list[str] | None = None,
     ) -> Paragraph:
         doc = locked_doc.doc
         p = doc.add_paragraph()
         resolver = ListStyleResolver(doc)
         resolver.apply_bullet(p, text, level=level, warnings=warnings)
+        self._apply_multilingual_properties(p, text, locked_doc)
         return p
+
+    @staticmethod
+    def _apply_multilingual_properties(
+        paragraph: Paragraph,
+        text: str,
+        locked_doc: LockedTemplate,
+    ) -> None:
+        """Apply only template-derived script fonts and required RTL metadata."""
+        fonts = locked_doc.spec.fonts
+        is_rtl = any(unicodedata.bidirectional(char) in {"R", "AL", "AN"} for char in text)
+        if is_rtl:
+            ppr = paragraph._p.get_or_add_pPr()
+            if ppr.find(qn("w:bidi")) is None:
+                ppr.insert_element_before(
+                    cast(Any, OxmlElement("w:bidi")),
+                    "w:adjustRightInd",
+                    "w:snapToGrid",
+                    "w:spacing",
+                    "w:ind",
+                    "w:contextualSpacing",
+                    "w:mirrorIndents",
+                    "w:suppressOverlap",
+                    "w:jc",
+                    "w:textDirection",
+                    "w:textAlignment",
+                    "w:textboxTightWrap",
+                    "w:outlineLvl",
+                    "w:divId",
+                    "w:cnfStyle",
+                    "w:rPr",
+                    "w:sectPr",
+                    "w:pPrChange",
+                )
+            bidi = ppr.find(qn("w:bidi"))
+            if bidi is not None:
+                bidi.set(qn("w:val"), "1")
+
+        for run in paragraph.runs:
+            run_text = run.text
+            has_east_asian = any(
+                unicodedata.name(char, "").startswith(
+                    ("CJK", "HIRAGANA", "KATAKANA", "HANGUL", "BOPOMOFO", "YI ")
+                )
+                for char in run_text
+            )
+            has_complex_script = any(
+                unicodedata.name(char, "").startswith(
+                    (
+                        "ARABIC",
+                        "HEBREW",
+                        "SYRIAC",
+                        "THAANA",
+                        "DEVANAGARI",
+                        "BENGALI",
+                        "GURMUKHI",
+                        "GUJARATI",
+                        "ORIYA",
+                        "TAMIL",
+                        "TELUGU",
+                        "KANNADA",
+                        "MALAYALAM",
+                        "SINHALA",
+                        "THAI",
+                        "LAO",
+                        "TIBETAN",
+                        "MYANMAR",
+                        "KHMER",
+                    )
+                )
+                for char in run_text
+            )
+            has_rtl_run = is_rtl and any(
+                unicodedata.bidirectional(char) in {"R", "AL", "AN"} for char in run_text
+            )
+            needs_script_font = (has_complex_script and fonts.complex_script_font) or (
+                has_east_asian and fonts.east_asian_font
+            )
+            if not has_rtl_run and not needs_script_font:
+                continue
+
+            rpr = run._element.get_or_add_rPr()
+            if has_rtl_run:
+                if rpr.find(qn("w:rtl")) is None:
+                    rpr.insert_element_before(
+                        cast(Any, OxmlElement("w:rtl")),
+                        "w:cs",
+                        "w:em",
+                        "w:lang",
+                        "w:eastAsianLayout",
+                        "w:specVanish",
+                        "w:oMath",
+                    )
+                rtl = rpr.find(qn("w:rtl"))
+                if rtl is not None:
+                    rtl.set(qn("w:val"), "1")
+            if needs_script_font:
+                rfonts = rpr.get_or_add_rFonts()
+                if has_complex_script and fonts.complex_script_font:
+                    rfonts.set(qn("w:cs"), fonts.complex_script_font)
+                if has_east_asian and fonts.east_asian_font:
+                    rfonts.set(qn("w:eastAsia"), fonts.east_asian_font)
+
+    def _apply_table_multilingual_properties(
+        self, table: Table, locked_doc: LockedTemplate
+    ) -> None:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    self._apply_multilingual_properties(paragraph, paragraph.text, locked_doc)
 
     def insert_cloned_table(
         self,
         locked_doc: LockedTemplate,
-        headers: List[str],
-        rows: List[List[str]],
-        saved_table_xmls: Optional[List[Any]] = None,
+        headers: list[str],
+        rows: list[list[str]],
+        saved_table_xmls: list[Any] | None = None,
         source_table_index: int = 0,
     ) -> Table:
         doc = locked_doc.doc
@@ -131,8 +261,10 @@ class DocxEngine:
                     table.style = doc.styles[valid_style]
                 elif "Table Grid" in doc.styles:
                     table.style = doc.styles["Table Grid"]
-            except Exception:
-                pass
+            except (KeyError, TypeError, ValueError):
+                logger.warning(
+                    "Table style could not be applied; the template table structure is retained."
+                )
 
             curr_row = 0
             if headers:
@@ -144,6 +276,7 @@ class DocxEngine:
                 for c, val in enumerate(r_data):
                     if c < col_count:
                         table.cell(curr_row + r_idx, c).text = str(val)
+            self._apply_table_multilingual_properties(table, locked_doc)
             return table
 
         # Cloned table XML handling
@@ -161,36 +294,70 @@ class DocxEngine:
 
         xml_rows = list(new_tbl_xml.xpath(".//w:tr"))
         template_header_row_xml = copy.deepcopy(xml_rows[0]) if len(xml_rows) > 0 else None
-        template_data_row_xml = copy.deepcopy(xml_rows[1]) if len(xml_rows) > 1 else (
-            copy.deepcopy(xml_rows[0]) if len(xml_rows) > 0 else None
+        template_data_row_xml = (
+            copy.deepcopy(xml_rows[1])
+            if len(xml_rows) > 1
+            else (copy.deepcopy(xml_rows[0]) if len(xml_rows) > 0 else None)
         )
 
         for r_elem in xml_rows:
             new_tbl_xml.remove(r_elem)
 
+        # Synchronize tblGrid column definitions with col_count so table.cell indexing matches
+        tbl_grids = list(new_tbl_xml.xpath(".//w:tblGrid"))
+        if tbl_grids:
+            grid_elem = tbl_grids[0]
+            grid_cols = list(grid_elem.xpath(".//w:gridCol"))
+            while len(grid_cols) < col_count and len(grid_cols) > 0:
+                new_gc = copy.deepcopy(grid_cols[-1])
+                grid_elem.append(new_gc)
+                grid_cols.append(new_gc)
+            while len(grid_cols) > col_count:
+                grid_elem.remove(grid_cols.pop())
+
+        def get_row_grid_span(tr_elem) -> int:
+            tc_list = tr_elem.xpath(".//w:tc")
+            span = 0
+            for tc in tc_list:
+                spans = tc.xpath(".//w:gridSpan/@w:val")
+                span += int(spans[0]) if spans else 1
+            return span
+
         # Header row
         if headers and template_header_row_xml is not None:
             h_row = copy.deepcopy(template_header_row_xml)
-            cells = list(h_row.xpath(".//w:tc"))
-            while len(cells) < col_count and len(cells) > 0:
+            while get_row_grid_span(h_row) < col_count:
+                cells = list(h_row.xpath(".//w:tc"))
+                if not cells:
+                    break
                 new_tc = copy.deepcopy(cells[-1])
+                for gs in new_tc.xpath(".//w:gridSpan"):
+                    gs.getparent().remove(gs)
                 h_row.append(new_tc)
-                cells.append(new_tc)
-            while len(cells) > col_count:
-                h_row.remove(cells.pop())
+            while get_row_grid_span(h_row) > col_count:
+                cells = list(h_row.xpath(".//w:tc"))
+                if len(cells) <= 1:
+                    break
+                h_row.remove(cells[-1])
             new_tbl_xml.append(h_row)
 
         # Data rows
         for _ in rows:
             if template_data_row_xml is not None:
                 d_row = copy.deepcopy(template_data_row_xml)
-                cells = list(d_row.xpath(".//w:tc"))
-                while len(cells) < col_count and len(cells) > 0:
+                while get_row_grid_span(d_row) < col_count:
+                    cells = list(d_row.xpath(".//w:tc"))
+                    if not cells:
+                        break
                     new_tc = copy.deepcopy(cells[-1])
+                    for gs in new_tc.xpath(".//w:gridSpan"):
+                        gs.getparent().remove(gs)
                     d_row.append(new_tc)
-                    cells.append(new_tc)
-                while len(cells) > col_count:
-                    d_row.remove(cells.pop())
+                while get_row_grid_span(d_row) > col_count:
+                    cells = list(d_row.xpath(".//w:tc"))
+                    if len(cells) <= 1:
+                        break
+                    d_row.remove(cells[-1])
                 new_tbl_xml.append(d_row)
 
         table = Table(new_tbl_xml, doc)
@@ -205,8 +372,11 @@ class DocxEngine:
             if target_r < len(table.rows):
                 for c, val in enumerate(row_data):
                     if c < len(table.rows[target_r].cells):
-                        self._set_cell_text_preserve_formatting(table.rows[target_r].cells[c], str(val))
+                        self._set_cell_text_preserve_formatting(
+                            table.rows[target_r].cells[c], str(val)
+                        )
 
+        self._apply_table_multilingual_properties(table, locked_doc)
         return table
 
     def _set_cell_text_preserve_formatting(self, cell: _Cell, text: str) -> None:
@@ -230,9 +400,9 @@ class DocxEngine:
         self,
         locked_doc: LockedTemplate,
         image_path: str,
-        caption: Optional[str] = None,
-        max_width_inches: Optional[float] = None,
-    ) -> Optional[Any]:
+        caption: str | None = None,
+        max_width_inches: float | None = None,
+    ) -> Any | None:
         doc = locked_doc.doc
         p_img = Path(image_path)
         if not p_img.exists():
@@ -240,7 +410,9 @@ class DocxEngine:
 
         sec = doc.sections[-1]
         avail_width = sec.page_width - sec.left_margin - sec.right_margin
-        width = avail_width if max_width_inches is None else min(avail_width, Inches(max_width_inches))
+        width = (
+            avail_width if max_width_inches is None else min(avail_width, Inches(max_width_inches))
+        )
 
         p = doc.add_paragraph()
         run = p.add_run()
@@ -248,13 +420,16 @@ class DocxEngine:
 
         if caption:
             p_cap = doc.add_paragraph(caption)
+            self._apply_multilingual_properties(p_cap, caption, locked_doc)
             try:
                 p_cap.style = doc.styles["Caption"]
-            except Exception:
+            except KeyError:
                 p_cap.runs[0].italic = True
         return p
 
-    def replace_placeholders_preserving_runs(self, doc: Document, mapping: Dict[str, str]) -> int:
+    def replace_placeholders_preserving_runs(
+        self, doc: DocumentObject, mapping: dict[str, str]
+    ) -> int:
         """
         Replaces {{key}} placeholders across body, tables, headers, and footers,
         preserving run formatting (bold, size, color) of the matched element.
@@ -300,13 +475,13 @@ class DocxEngine:
 
         return replacements
 
-    def mark_toc_fields_dirty(self, doc: Document) -> None:
+    def mark_toc_fields_dirty(self, doc: DocumentObject) -> None:
         """Marks Table of Contents fields with w:dirty='true' so Word prompts for refresh (DOCX-03)."""
         body_elem = doc._body._body
         for fld in body_elem.xpath(".//w:fldChar[@w:fldCharType='begin']"):
             fld.set(qn("w:dirty"), "true")
 
-    def apply_overrides(self, doc: Document, overrides: List[ThemeOverrideRequest]) -> None:
+    def apply_overrides(self, doc: DocumentObject, overrides: list[ThemeOverrideRequest]) -> None:
         """Applies validated user theme overrides safely without mutating arbitrary styles (DOCX-05)."""
         for ov in overrides:
             val = ov.value
@@ -319,8 +494,12 @@ class DocxEngine:
                                 g = int(val[2:4], 16)
                                 b = int(val[4:6], 16)
                                 s_name.font.color.rgb = RGBColor(r, g, b)
-                        except Exception:
-                            pass
+                        except ValueError as exc:
+                            raise AppError(
+                                code="INVALID_THEME_OVERRIDE",
+                                http_status=422,
+                                message="Heading color override must be a validated six-digit hexadecimal value.",
+                            ) from exc
             elif ov.target in ("table_border", "page_border"):
                 # Apply to tblBorders
                 for tbl in doc.tables:
@@ -335,9 +514,9 @@ class DocxEngine:
         locked_doc: LockedTemplate,
         plan: DocumentPlan,
         output_path: str,
-        edit_action: Optional[str] = None,
-        target_heading: Optional[str] = None,
-        target_index: Optional[int] = None,
+        edit_action: str | None = None,
+        target_heading: str | None = None,
+        target_index: int | None = None,
     ) -> str:
         """
         Executes surgical outline-indexed content edits (DOCX-04).
@@ -356,58 +535,96 @@ class DocxEngine:
         resolved_p_idx = None
         candidates = []
 
-        if target_index is not None and 0 <= target_index < len(outline):
-            target_text = outline[target_index]
-            for i, p in enumerate(doc.paragraphs):
-                if target_text.strip().lower() in p.text.strip().lower():
-                    resolved_p_idx = i
-                    break
+        # Find actual heading paragraphs in document (excluding TOC styles)
+        heading_indices: list[int] = []
+        for i, p in enumerate(doc.paragraphs):
+            text = p.text.strip()
+            if not text:
+                continue
+            style_name = (p.style.name if p.style else "").strip().lower()
+            is_toc = style_name == "toc" or style_name.startswith("toc ")
+            is_h = (style_name.startswith("heading") or style_name == "title") and not is_toc
+            if is_h and len(text) < 120:
+                heading_indices.append(i)
+
+        action = edit_action or "append"
+        if action not in ("append", "insert_after"):
+            raise AppError(
+                code="UNSUPPORTED_ACTION",
+                http_status=422,
+                message=f"Edit action '{action}' is not supported.",
+                details={"supported_actions": ["append", "insert_after"]},
+            )
+
+        if target_index is not None:
+            if 0 <= target_index < len(heading_indices):
+                resolved_p_idx = heading_indices[target_index]
+            else:
+                raise AppError(
+                    code="EDIT_TARGET_NOT_FOUND",
+                    http_status=422,
+                    message=f"Edit target index {target_index} is out of bounds (0..{len(heading_indices) - 1}).",
+                    details={"candidates": outline[:5]},
+                )
 
         if resolved_p_idx is None and target_heading:
             clean_target = target_heading.strip().lower()
-            # Exact match
-            for i, p in enumerate(doc.paragraphs):
-                if clean_target == p.text.strip().lower():
-                    resolved_p_idx = i
-                    break
-
-            # Fuzzy match if not exact
-            if resolved_p_idx is None:
+            exact_matches = [
+                i for i in heading_indices if clean_target == doc.paragraphs[i].text.strip().lower()
+            ]
+            if len(exact_matches) == 1:
+                resolved_p_idx = exact_matches[0]
+            elif len(exact_matches) > 1:
+                raise AppError(
+                    code="EDIT_TARGET_NOT_FOUND",
+                    http_status=422,
+                    message=f"Edit target heading '{target_heading}' is ambiguous ({len(exact_matches)} matches found). Please specify an outline index.",
+                    details={"candidates": [doc.paragraphs[i].text.strip() for i in exact_matches]},
+                )
+            else:
                 scored = []
-                for i, p in enumerate(doc.paragraphs):
-                    p_clean = p.text.strip().lower()
-                    if p_clean:
-                        ratio = difflib.SequenceMatcher(None, clean_target, p_clean).ratio()
-                        if ratio >= 0.75:
-                            scored.append((ratio, i, p.text.strip()))
+                for i in heading_indices:
+                    p_clean = doc.paragraphs[i].text.strip().lower()
+                    ratio = difflib.SequenceMatcher(None, clean_target, p_clean).ratio()
+                    if ratio >= 0.75:
+                        scored.append((ratio, i, doc.paragraphs[i].text.strip()))
                 scored.sort(reverse=True)
-                if scored:
-                    if len(scored) == 1 or (len(scored) > 1 and scored[0][0] - scored[1][0] > 0.15):
-                        resolved_p_idx = scored[0][1]
-                    else:
-                        candidates = [s[2] for s in scored[:5]]
+                if scored and (
+                    len(scored) == 1 or (len(scored) > 1 and scored[0][0] - scored[1][0] > 0.15)
+                ):
+                    resolved_p_idx = scored[0][1]
+                else:
+                    candidates = [s[2] for s in scored[:5]]
+                    raise AppError(
+                        code="EDIT_TARGET_NOT_FOUND",
+                        http_status=422,
+                        message=f"Edit target heading '{target_heading}' could not be unambiguously resolved.",
+                        details={"candidates": candidates or outline[:5]},
+                    )
 
-        if resolved_p_idx is None and target_heading:
+        if action == "insert_after" and resolved_p_idx is None:
             raise AppError(
                 code="EDIT_TARGET_NOT_FOUND",
                 http_status=422,
-                message=f"Edit target heading '{target_heading}' could not be unambiguously resolved.",
-                details={"candidates": candidates or outline[:5]},
+                message="Edit action 'insert_after' requires a valid target heading or outline index.",
+                details={"candidates": outline[:5]},
             )
 
-        action = edit_action or "append"
         saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
 
-        if action == "append" or resolved_p_idx is None:
+        if action == "append":
             # Append before final sectPr
             for s in plan.sections:
                 self._render_section(locked_doc, s, saved_table_xmls)
         elif action == "insert_after":
+            assert resolved_p_idx is not None
             # Find end of target section (next heading)
             end_idx = len(doc.paragraphs)
             for j in range(resolved_p_idx + 1, len(doc.paragraphs)):
                 p = doc.paragraphs[j]
-                if p.style and ("heading" in p.style.name.lower() or "title" in p.style.name.lower()):
+                if p.style and (
+                    "heading" in p.style.name.lower() or "title" in p.style.name.lower()
+                ):
                     end_idx = j
                     break
 
@@ -420,37 +637,33 @@ class DocxEngine:
                         if style_name:
                             try:
                                 style_obj = doc.styles[style_name]
-                            except Exception:
+                            except KeyError:
                                 for st in doc.styles:
                                     if st.name.lower() == style_name.lower():
                                         style_obj = st
                                         break
                         if style_obj:
-                            next_p.insert_paragraph_before(s.title, style=style_obj)
+                            heading = next_p.insert_paragraph_before(s.title, style=style_obj)
+                            self._apply_multilingual_properties(heading, s.title, locked_doc)
                         else:
                             hp = next_p.insert_paragraph_before(s.title)
                             if hp.runs:
                                 hp.runs[0].bold = True
+                            self._apply_multilingual_properties(hp, s.title, locked_doc)
                     for p_text in s.paragraphs:
-                        next_p.insert_paragraph_before(p_text)
+                        paragraph = next_p.insert_paragraph_before(p_text)
+                        self._apply_multilingual_properties(paragraph, p_text, locked_doc)
                     for b_text in s.bullets:
-                        next_p.insert_paragraph_before(f"•  {b_text}")
+                        text = f"•  {b_text}"
+                        paragraph = next_p.insert_paragraph_before(text)
+                        self._apply_multilingual_properties(paragraph, text, locked_doc)
             else:
                 for s in plan.sections:
                     self._render_section(locked_doc, s, saved_table_xmls)
-        elif action == "replace":
-            # Keep heading, replace body paragraphs within section
-            target_p = doc.paragraphs[resolved_p_idx]
-            for s in plan.sections:
-                for p_text in s.paragraphs:
-                    p_new = doc.add_paragraph(p_text)
-                    target_p._p.addnext(p_new._p)
-                    target_p = p_new
 
         if plan.generation_mode == "demo":
-            doc.add_paragraph(
-                "DEMO CONTENT — not AI generated. Treat this output as a scaffold and validate details before use."
-            )
+            demo_note = "DEMO CONTENT — not AI generated. Treat this output as a scaffold and validate details before use."
+            self.insert_paragraph(locked_doc, demo_note)
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         doc.save(output_path)
@@ -460,9 +673,9 @@ class DocxEngine:
         self,
         locked_doc: LockedTemplate,
         section: DocumentSection,
-        saved_table_xmls: List[Any],
-        warnings: Optional[List[str]] = None,
-        source_numbers: Optional[Dict[str, int]] = None,
+        saved_table_xmls: list[Any],
+        warnings: list[str] | None = None,
+        source_numbers: dict[str, int] | None = None,
     ) -> None:
         if section.title:
             self.insert_heading(
@@ -473,7 +686,7 @@ class DocxEngine:
             )
 
         for p_text in section.paragraphs:
-            self.insert_paragraph(locked_doc, p_text)
+            self.insert_paragraph(locked_doc, p_text, warnings=warnings)
 
         for b_text in section.bullets:
             self.insert_bullet_point(locked_doc, b_text, warnings=warnings)
@@ -503,7 +716,11 @@ class DocxEngine:
                 source_numbers=source_numbers,
             )
 
-        valid_numbers = [source_numbers[item] for item in section.citations if source_numbers and item in source_numbers]
+        valid_numbers = [
+            source_numbers[item]
+            for item in section.citations
+            if source_numbers and item in source_numbers
+        ]
         if valid_numbers:
             markers = " ".join(f"[{number}]" for number in valid_numbers)
             self.insert_paragraph(locked_doc, markers)
@@ -514,12 +731,12 @@ class DocxEngine:
         plan: DocumentPlan,
         output_path: str,
         template_mode: str = "auto",
-        body_anchor_index: Optional[int] = None,
-        overrides: Optional[List[ThemeOverrideRequest]] = None,
-        edit_action: Optional[str] = None,
-        target_heading: Optional[str] = None,
-        target_index: Optional[int] = None,
-        warnings: Optional[List[str]] = None,
+        body_anchor_index: int | None = None,
+        overrides: list[ThemeOverrideRequest] | None = None,
+        edit_action: str | None = None,
+        target_heading: str | None = None,
+        target_index: int | None = None,
+        warnings: list[str] | None = None,
     ) -> str:
         """
         Applies a DocumentPlan onto a locked template DOCX conforming to DOCX-01..09.
@@ -549,7 +766,7 @@ class DocxEngine:
         # 2. Body inhabitation strategy
         is_structured = len(doc.sections) > 1 or len(doc.paragraphs) > 20 or replacements_count > 0
 
-        def flatten_sections(sections: List[DocumentSection]) -> List[DocumentSection]:
+        def flatten_sections(sections: list[DocumentSection]) -> list[DocumentSection]:
             flattened = []
             for item in sections:
                 flattened.append(item)
@@ -561,8 +778,12 @@ class DocxEngine:
             for section in flatten_sections(plan.sections)
             for citation in section.citations
         }
-        referenced_sources = [source for source in plan.research_sources if source.id in cited_source_ids]
-        source_numbers = {source.id: index for index, source in enumerate(referenced_sources, start=1)}
+        referenced_sources = [
+            source for source in plan.research_sources if source.id in cited_source_ids
+        ]
+        source_numbers = {
+            source.id: index for index, source in enumerate(referenced_sources, start=1)
+        }
 
         if template_mode == "fill":
             # Fill mode: keep existing structure, placeholders already replaced
@@ -575,7 +796,12 @@ class DocxEngine:
                     warnings=warnings,
                     source_numbers=source_numbers,
                 )
-        elif template_mode == "append" or (template_mode == "auto" and is_structured and replacements_count == 0 and not body_anchor_index):
+        elif template_mode == "append" or (
+            template_mode == "auto"
+            and is_structured
+            and replacements_count == 0
+            and not body_anchor_index
+        ):
             # Append mode: keep all existing body content, append new content before final sectPr
             saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
             for s in plan.sections:
@@ -592,7 +818,9 @@ class DocxEngine:
 
             # DOCX-01: Always render document title in create mode
             if plan.title and replacements_count == 0:
-                self.insert_heading(locked_doc, plan.title, requested_style="Title", warnings=warnings)
+                self.insert_heading(
+                    locked_doc, plan.title, requested_style="Title", warnings=warnings
+                )
 
             # Render sections
             for idx, section in enumerate(plan.sections):
@@ -609,11 +837,15 @@ class DocxEngine:
 
         # Shared footer content must appear in fill, append, and replace modes.
         if plan.conclusion:
-            self.insert_heading(locked_doc, "Conclusion", requested_style="Heading 1", warnings=warnings)
+            self.insert_heading(
+                locked_doc, "Conclusion", requested_style="Heading 1", warnings=warnings
+            )
             self.insert_paragraph(locked_doc, plan.conclusion)
 
         if referenced_sources:
-            self.insert_heading(locked_doc, "References", requested_style="Heading 1", warnings=warnings)
+            self.insert_heading(
+                locked_doc, "References", requested_style="Heading 1", warnings=warnings
+            )
             for source in referenced_sources:
                 number = source_numbers[source.id]
                 published = f" Published: {source.published_date}." if source.published_date else ""

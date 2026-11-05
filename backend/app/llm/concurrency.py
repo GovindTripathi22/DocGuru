@@ -8,7 +8,9 @@ from weakref import WeakKeyDictionary
 
 from ..config import settings
 
-_semaphores: WeakKeyDictionary[asyncio.AbstractEventLoop, tuple[int, asyncio.Semaphore]] = WeakKeyDictionary()
+_semaphores: WeakKeyDictionary[asyncio.AbstractEventLoop, tuple[int, asyncio.Semaphore]] = (
+    WeakKeyDictionary()
+)
 _semaphore_lock = Lock()
 
 

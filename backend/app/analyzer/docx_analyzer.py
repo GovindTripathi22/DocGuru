@@ -1,28 +1,38 @@
-from typing import Dict, List, Any, Optional, Set
 import hashlib
 import json
 import re
 from pathlib import Path
-import docx
+from typing import Any, Literal
+
 from docx import Document
+from docx.document import Document as DocumentObject
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml.ns import qn
+from lxml import etree
 
 from ..models.template_spec import (
-    TemplateSpecification,
-    PageSpec,
-    MarginSpec,
-    FontSpec,
-    StyleSpec,
-    ParagraphRuleSpec,
-    TableRuleSpec,
-    HeaderFooterSpec,
-    NumberingSpec,
     BorderSpec,
-    BorderItemSpec,
-    ThemeSpec,
+    FontSpec,
+    HeaderFooterSpec,
     LockStatus,
+    MarginSpec,
+    NumberingSpec,
+    PageSpec,
+    ParagraphRuleSpec,
+    StyleSpec,
+    TableRuleSpec,
+    TemplateSpecification,
 )
+
+
+def _xpath_elements(root: etree._Element, expression: str) -> list[etree._Element]:
+    results: object = root.xpath(expression)
+    if not isinstance(results, list):
+        return []
+    return [item for item in results if isinstance(item, etree._Element)]
+
 
 class DocxAnalyzer:
     """
@@ -66,7 +76,7 @@ class DocxAnalyzer:
             styles=styles_dict,
             header=header_spec,
             footer=footer_spec,
-            table_rules=table_rules
+            table_rules=table_rules,
         )
 
         # 8. Extract Rules, Guidelines, and Outline from Document Content
@@ -91,22 +101,27 @@ class DocxAnalyzer:
             document_outline=document_outline,
             document_text_summary=doc_summary,
             style_hash=style_hash,
-            lock_status=LockStatus()
+            lock_status=LockStatus(),
         )
 
-    def _extract_rules_and_outline(self, doc: Document):
+    def _extract_rules_and_outline(self, doc: DocumentObject):
         """
         Scans the document for internal formatting guidelines, submission rules,
         style requirements, and existing chapter headings/outline using anchored regex.
         """
-        rule_anchor_re = re.compile(r"^\s*(rule|note|guideline|requirement|instruction|format|font|margin|spacing|style)s?(\s+\w+)?\s*[:\-–]", re.IGNORECASE)
-        must_format_re = re.compile(r"\b(must|shall)\b.*\b(format|font|margin|spacing|size|heading|style|table|figure|page|color|border|citation|ieee)\b", re.IGNORECASE)
+        rule_anchor_re = re.compile(
+            r"^\s*(rule|note|guideline|requirement|instruction|format|font|margin|spacing|style)s?(\s+\w+)?\s*[:\-–]",
+            re.IGNORECASE,
+        )
+        must_format_re = re.compile(
+            r"\b(must|shall)\b.*\b(format|font|margin|spacing|size|heading|style|table|figure|page|color|border|citation|ieee)\b",
+            re.IGNORECASE,
+        )
 
-        extracted_rules: List[str] = []
-        document_outline: List[str] = []
-        outline_set: Set[str] = set()
-        seen_rules: Set[str] = set()
-        summary_paragraphs: List[str] = []
+        extracted_rules: list[str] = []
+        document_outline: list[str] = []
+        seen_rules: set[str] = set()
+        summary_paragraphs: list[str] = []
 
         for p in doc.paragraphs:
             text = p.text.strip()
@@ -114,12 +129,13 @@ class DocxAnalyzer:
                 continue
 
             # Detect headings / outline
-            style_name = (p.style.name if p.style else "").lower()
-            is_heading = "heading" in style_name or "title" in style_name
-            if is_heading or (len(text) < 100 and any(text.upper().startswith(kw) for kw in ["CHAPTER", "SECTION", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."])):
-                if text not in outline_set and len(text) < 120:
-                    outline_set.add(text)
-                    document_outline.append(text)
+            style_name = (p.style.name if p.style else "").strip().lower()
+            is_toc_style = style_name == "toc" or style_name.startswith("toc ")
+            is_heading = (
+                style_name.startswith("heading") or style_name == "title"
+            ) and not is_toc_style
+            if is_heading and len(text) < 120:
+                document_outline.append(text)
 
             # Detect rule / guideline paragraphs via line-anchored whole-word patterns
             is_rule = bool(rule_anchor_re.search(text) or must_format_re.search(text))
@@ -135,16 +151,18 @@ class DocxAnalyzer:
         doc_summary = " | ".join(summary_paragraphs[:8])
         return extracted_rules, document_outline, doc_summary
 
-    def _extract_page_spec(self, doc: Document) -> PageSpec:
+    def _extract_page_spec(self, doc: DocumentObject) -> PageSpec:
         if not doc.sections:
             return PageSpec()
 
         section = doc.sections[0]
-        
+
         # Convert EMU or twips to points (1 pt = 12700 EMU, 1 pt = 20 twips)
         width_pt = section.page_width.pt if section.page_width else 612.0
         height_pt = section.page_height.pt if section.page_height else 792.0
-        orientation = "landscape" if width_pt > height_pt else "portrait"
+        orientation: Literal["portrait", "landscape"] = (
+            "landscape" if width_pt > height_pt else "portrait"
+        )
 
         margins = MarginSpec(
             top_pt=section.top_margin.pt if section.top_margin else 72.0,
@@ -160,16 +178,15 @@ class DocxAnalyzer:
             height_pt=height_pt,
             orientation=orientation,
             margins=margins,
-            columns_count=1
+            columns_count=1,
         )
 
-    def _extract_styles(self, doc: Document):
-        styles_dict: Dict[str, StyleSpec] = {}
-        all_fonts: Set[str] = set()
-        heading_styles: List[str] = []
-        body_styles: List[str] = []
+    def _extract_styles(self, doc: DocumentObject):
+        styles_dict: dict[str, StyleSpec] = {}
+        all_fonts: set[str] = set()
+        heading_styles: list[str] = []
+        body_styles: list[str] = []
 
-        default_font = "Calibri"
         heading1_font = None
         heading2_font = None
 
@@ -178,14 +195,14 @@ class DocxAnalyzer:
                 continue
 
             name = style.name
-            is_paragraph_style = (style.type == WD_STYLE_TYPE.PARAGRAPH)
+            is_paragraph_style = style.type == WD_STYLE_TYPE.PARAGRAPH
             font_name = None
             font_size = None
             bold = None
             italic = None
             color_hex = None
 
-            if hasattr(style, 'font') and style.font:
+            if hasattr(style, "font") and style.font:
                 if style.font.name:
                     font_name = style.font.name
                     all_fonts.add(font_name)
@@ -218,7 +235,7 @@ class DocxAnalyzer:
                 bold=bold,
                 italic=italic,
                 color_hex=color_hex,
-                is_heading=is_heading
+                is_heading=is_heading,
             )
 
         # Validate that heading styles actually exist in the document's style
@@ -232,7 +249,9 @@ class DocxAnalyzer:
             except (KeyError, UserWarning):
                 clean_id = hs.replace(" ", "")
                 for s in doc.styles:
-                    if s.name.lower() == hs.lower() or (hasattr(s, 'style_id') and s.style_id.lower() == clean_id.lower()):
+                    if s.name.lower() == hs.lower() or (
+                        hasattr(s, "style_id") and s.style_id.lower() == clean_id.lower()
+                    ):
                         exists = True
                         break
             if exists:
@@ -244,19 +263,86 @@ class DocxAnalyzer:
         if not body_styles:
             body_styles = ["Normal"]
 
-        detected_fallback = sorted(all_fonts)[0] if all_fonts else "Normal"
+        script_fonts = self._extract_script_fonts(doc)
+        normal_style = doc.styles["Normal"]
+        normal_font = normal_style.font.name
+        detected_fallback = min(all_fonts) if all_fonts else None
+        default_font = normal_font or script_fonts.ascii_font or detected_fallback
+        detected_fonts = all_fonts | {
+            font
+            for font in (
+                script_fonts.ascii_font,
+                script_fonts.east_asian_font,
+                script_fonts.complex_script_font,
+            )
+            if font
+        }
         font_spec = FontSpec(
-            default=default_font or detected_fallback,
-            body=default_font or detected_fallback,
-            heading1=heading1_font or default_font or detected_fallback,
-            heading2=heading2_font or default_font or detected_fallback,
-            all_detected_fonts=sorted(list(all_fonts)),
+            default=default_font,
+            body=normal_font or script_fonts.ascii_font or detected_fallback,
+            heading1=heading1_font or default_font,
+            heading2=heading2_font or default_font,
+            ascii_font=script_fonts.ascii_font,
+            east_asian_font=script_fonts.east_asian_font,
+            complex_script_font=script_fonts.complex_script_font,
+            all_detected_fonts=sorted(detected_fonts),
         )
 
         return styles_dict, font_spec, heading_styles, body_styles
 
-    def _extract_paragraph_rules(self, doc: Document) -> Dict[str, ParagraphRuleSpec]:
-        rules: Dict[str, ParagraphRuleSpec] = {}
+    def _extract_script_fonts(self, doc: DocumentObject) -> FontSpec:
+        """Resolve script-specific fonts from Normal, docDefaults, and the theme."""
+        theme_fonts: dict[str, str] = {}
+        theme_root: etree._Element | None = None
+        try:
+            theme_part = doc.part.part_related_by(RT.THEME)
+            theme_root = etree.fromstring(theme_part.blob)
+        except (KeyError, etree.XMLSyntaxError, ValueError):
+            theme_root = None
+
+        if theme_root is not None:
+            suffixes = {"latin": "HAnsi", "ea": "EastAsia", "cs": "Bidi"}
+            for group in ("major", "minor"):
+                group_nodes = _xpath_elements(theme_root, f".//*[local-name()='{group}Font']")
+                if not group_nodes:
+                    continue
+                for child_name, suffix in suffixes.items():
+                    nodes = _xpath_elements(group_nodes[0], f"./*[local-name()='{child_name}']")
+                    if nodes and nodes[0].get("typeface"):
+                        theme_fonts[f"{group}{suffix}"] = str(nodes[0].get("typeface"))
+                    if child_name == "latin" and nodes and nodes[0].get("typeface"):
+                        theme_fonts[f"{group}Ascii"] = str(nodes[0].get("typeface"))
+
+        normal_style = doc.styles["Normal"]
+        normal_rpr = normal_style._element.rPr
+        normal_fonts = normal_rpr.rFonts if normal_rpr is not None else None
+        defaults: list[Any] = doc.styles.element.xpath(
+            "./w:docDefaults/w:rPrDefault/w:rPr/w:rFonts"
+        )
+        default_fonts: Any | None = defaults[0] if defaults else None
+
+        def resolve(direct_names: tuple[str, ...], theme_names: tuple[str, ...]) -> str | None:
+            for font_elements in (normal_fonts, default_fonts):
+                if font_elements is None:
+                    continue
+                for name in direct_names:
+                    value = font_elements.get(qn(f"w:{name}"))
+                    if value:
+                        return value
+                for name in theme_names:
+                    theme_key = font_elements.get(qn(f"w:{name}"))
+                    if theme_key and theme_key in theme_fonts:
+                        return theme_fonts[theme_key]
+            return None
+
+        return FontSpec(
+            ascii_font=resolve(("ascii", "hAnsi"), ("asciiTheme", "hAnsiTheme")),
+            east_asian_font=resolve(("eastAsia",), ("eastAsiaTheme",)),
+            complex_script_font=resolve(("cs",), ("cstheme",)),
+        )
+
+    def _extract_paragraph_rules(self, doc: DocumentObject) -> dict[str, ParagraphRuleSpec]:
+        rules: dict[str, ParagraphRuleSpec] = {}
         for p in doc.paragraphs[:10]:
             style_name = p.style.name if p.style else "Normal"
             if style_name not in rules:
@@ -268,9 +354,15 @@ class DocxAnalyzer:
                 elif p.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY:
                     align_str = "justify"
 
-                space_before = p.paragraph_format.space_before.pt if p.paragraph_format.space_before else 0.0
-                space_after = p.paragraph_format.space_after.pt if p.paragraph_format.space_after else 6.0
-                line_spacing = p.paragraph_format.line_spacing if p.paragraph_format.line_spacing else 1.15
+                space_before = (
+                    p.paragraph_format.space_before.pt if p.paragraph_format.space_before else 0.0
+                )
+                space_after = (
+                    p.paragraph_format.space_after.pt if p.paragraph_format.space_after else 6.0
+                )
+                line_spacing = (
+                    p.paragraph_format.line_spacing if p.paragraph_format.line_spacing else 1.15
+                )
 
                 keep_with_next = getattr(p.paragraph_format, "keep_with_next", False)
                 keep_together = getattr(p.paragraph_format, "keep_together", False)
@@ -280,32 +372,36 @@ class DocxAnalyzer:
                     alignment=align_str,
                     spacing_before_pt=space_before,
                     spacing_after_pt=space_after,
-                    line_spacing=float(line_spacing) if isinstance(line_spacing, (int, float)) else 1.15,
+                    line_spacing=float(line_spacing)
+                    if isinstance(line_spacing, (int, float))
+                    else 1.15,
                     keep_with_next=bool(keep_with_next),
                     keep_lines_together=bool(keep_together),
-                    widow_orphan=bool(widow_control)
+                    widow_orphan=bool(widow_control),
                 )
         return rules
 
-    def _extract_tables(self, doc: Document) -> List[TableRuleSpec]:
-        table_rules: List[TableRuleSpec] = []
+    def _extract_tables(self, doc: DocumentObject) -> list[TableRuleSpec]:
+        table_rules: list[TableRuleSpec] = []
         for idx, table in enumerate(doc.tables):
             col_widths = []
             if table.columns:
                 for col in table.columns:
                     col_widths.append(float(col.width.pt) if col.width else 100.0)
 
-            table_rules.append(TableRuleSpec(
-                table_index=idx,
-                rows=len(table.rows),
-                cols=len(table.columns) if table.columns else 0,
-                col_widths_pt=col_widths,
-                alignment="center",
-                style_name=table.style.name if table.style else "Table Grid"
-            ))
+            table_rules.append(
+                TableRuleSpec(
+                    table_index=idx,
+                    rows=len(table.rows),
+                    cols=len(table.columns) if table.columns else 0,
+                    col_widths_pt=col_widths,
+                    alignment="center",
+                    style_name=table.style.name if table.style else "Table Grid",
+                )
+            )
         return table_rules
 
-    def _extract_headers_footers(self, doc: Document):
+    def _extract_headers_footers(self, doc: DocumentObject):
         header_spec = HeaderFooterSpec()
         footer_spec = HeaderFooterSpec()
 
@@ -317,7 +413,7 @@ class DocxAnalyzer:
                     has_content=bool(h_text),
                     text_preview=h_text[:100] if h_text else None,
                     distance_pt=sec.header_distance.pt if sec.header_distance else 36.0,
-                    paragraph_count=len(sec.header.paragraphs)
+                    paragraph_count=len(sec.header.paragraphs),
                 )
 
             if sec.footer:
@@ -325,7 +421,7 @@ class DocxAnalyzer:
                 # Check for page number XML codes
                 has_page_num = False
                 for p in sec.footer.paragraphs:
-                    if 'PAGE' in p._p.xml:
+                    if "PAGE" in p._p.xml:
                         has_page_num = True
                         break
 
@@ -334,12 +430,12 @@ class DocxAnalyzer:
                     text_preview=f_text[:100] if f_text else None,
                     distance_pt=sec.footer_distance.pt if sec.footer_distance else 36.0,
                     has_page_number=has_page_num,
-                    paragraph_count=len(sec.footer.paragraphs)
+                    paragraph_count=len(sec.footer.paragraphs),
                 )
 
         return header_spec, footer_spec
 
-    def _extract_numbering(self, doc: Document) -> NumberingSpec:
+    def _extract_numbering(self, doc: DocumentObject) -> NumberingSpec:
         has_bullets = False
         has_numbered = False
         for p in doc.paragraphs:
@@ -351,11 +447,11 @@ class DocxAnalyzer:
         return NumberingSpec(
             detected=has_bullets or has_numbered,
             has_bullet_lists=has_bullets,
-            has_numbered_lists=has_numbered
+            has_numbered_lists=has_numbered,
         )
 
-    def _extract_borders(self, doc: Document) -> Dict[str, BorderSpec]:
-        borders: Dict[str, BorderSpec] = {}
+    def _extract_borders(self, doc: DocumentObject) -> dict[str, BorderSpec]:
+        borders: dict[str, BorderSpec] = {}
         # Paragraph or page borders
         return borders
 
@@ -363,10 +459,10 @@ class DocxAnalyzer:
         self,
         page_spec: PageSpec,
         font_spec: FontSpec,
-        styles: Dict[str, StyleSpec],
+        styles: dict[str, StyleSpec],
         header: HeaderFooterSpec,
         footer: HeaderFooterSpec,
-        table_rules: Optional[List[TableRuleSpec]] = None
+        table_rules: list[TableRuleSpec] | None = None,
     ) -> str:
         """
         Computes a stable SHA256 hash of all formatting properties.

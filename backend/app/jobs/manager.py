@@ -6,20 +6,20 @@ import logging
 import os
 import time
 import uuid
-from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 import anyio
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ..ai.executor import DocumentExecutor
 from ..ai.planner import DocumentPlanner
 from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..config import settings
-from ..errors import AppError, TemplateNotFound
+from ..errors import AppError, LLMTimeout, TemplateNotFound
 from ..models.generation import GenerationRequest, ValidationReport
-from ..security import get_safe_path
+from ..models.template_spec import TemplateSpecification
+from ..security import get_safe_path, register_resource_owner
 from ..validation.diff_validator import DiffValidator
 
 logger = logging.getLogger(__name__)
@@ -38,28 +38,42 @@ JobStage = Literal[
 ]
 
 
+def select_enabled_template_rules(
+    spec: TemplateSpecification, enabled_rule_indices: list[int] | None
+) -> TemplateSpecification:
+    """Return a planning copy with only user-selected extracted rules."""
+    if enabled_rule_indices is None:
+        return spec
+    selected = set(enabled_rule_indices)
+    planning_spec = spec.model_copy(deep=True)
+    planning_spec.extracted_rules = [
+        rule for index, rule in enumerate(spec.extracted_rules[:12]) if index in selected
+    ]
+    return planning_spec
+
+
 class JobProgress(BaseModel):
     job_id: str
     status: JobStatus = "queued"
     stage: JobStage = "queued"
     progress: float = 0.0
     message: str = "Job queued"
-    current: Optional[Dict[str, int]] = None
-    warnings: List[str] = Field(default_factory=list)
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[Dict[str, Any]] = None
+    current: dict[str, int] | None = None
+    warnings: list[str] = Field(default_factory=list)
+    result: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
     template_id: str = ""
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 class JobManager:
     def __init__(self):
-        self.jobs: Dict[str, JobProgress] = {}
-        self.tasks: Dict[str, asyncio.Task] = {}
-        self.events: Dict[str, asyncio.Event] = {}
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self.jobs: dict[str, JobProgress] = {}
+        self.tasks: dict[str, asyncio.Task] = {}
+        self.events: dict[str, asyncio.Event] = {}
+        self._semaphore: asyncio.Semaphore | None = None
         self.analyzer = TemplateAnalyzer()
         self.planner = DocumentPlanner()
         self.executor = DocumentExecutor()
@@ -78,7 +92,7 @@ class JobManager:
             tmp = settings.JOBS_DIR / f"{job.job_id}.tmp"
             tmp.write_text(job.model_dump_json(indent=2), encoding="utf-8")
             os.replace(tmp, target)
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             logger.error("Failed to save snapshot for job %s: %s", job.job_id, e)
 
     def recover_interrupted_jobs(self) -> None:
@@ -99,15 +113,21 @@ class JobManager:
                     job.updated_at = time.time()
                     self._save_job_snapshot(job)
                 self.jobs[job.job_id] = job
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, TypeError, ValidationError, ValueError) as e:
                 logger.warning("Failed to recover job from %s: %s", file, e)
 
-    def purge_expired(self, retention_hours: Optional[int] = None) -> int:
+    def purge_expired(self, retention_hours: int | None = None) -> int:
         """Purge templates, outputs, and jobs older than retention_hours (SEC-07/08)."""
         hours = retention_hours or settings.RETENTION_HOURS
         cutoff = time.time() - (hours * 3600)
         purged = 0
-        for directory in (settings.UPLOAD_DIR, settings.OUTPUT_DIR, settings.JOBS_DIR, settings.TEMP_DIR):
+        for directory in (
+            settings.UPLOAD_DIR,
+            settings.OUTPUT_DIR,
+            settings.JOBS_DIR,
+            settings.TEMP_DIR,
+            settings.DATA_DIR / "ownership",
+        ):
             if not directory.exists():
                 continue
             for item in directory.iterdir():
@@ -120,7 +140,7 @@ class JobManager:
                         pass
         return purged
 
-    def submit_job(self, req: GenerationRequest, session_id: Optional[str] = None) -> JobProgress:
+    def submit_job(self, req: GenerationRequest, session_id: str | None = None) -> JobProgress:
         job_id = uuid.uuid4().hex
         job = JobProgress(
             job_id=job_id,
@@ -139,7 +159,9 @@ class JobManager:
         self.tasks[job_id] = task
         return job
 
-    async def execute_direct(self, req: GenerationRequest, session_id: Optional[str] = None) -> JobProgress:
+    async def execute_direct(
+        self, req: GenerationRequest, session_id: str | None = None
+    ) -> JobProgress:
         job_id = uuid.uuid4().hex
         job = JobProgress(
             job_id=job_id,
@@ -155,7 +177,7 @@ class JobManager:
         await self._execute_job(job, req)
         return job
 
-    def get_job(self, job_id: str, session_id: Optional[str] = None) -> JobProgress:
+    def get_job(self, job_id: str, session_id: str | None = None) -> JobProgress:
         job = self.jobs.get(job_id)
         if not job:
             snapshot = settings.JOBS_DIR / f"{job_id}.json"
@@ -164,15 +186,25 @@ class JobManager:
                     data = json.loads(snapshot.read_text(encoding="utf-8"))
                     job = JobProgress(**data)
                     self.jobs[job_id] = job
-                except Exception:
-                    pass
+                except (
+                    OSError,
+                    json.JSONDecodeError,
+                    TypeError,
+                    ValidationError,
+                    ValueError,
+                ) as exc:
+                    logger.warning("Could not load job snapshot %s: %s", snapshot.name, exc)
         if not job:
-            raise AppError(code="JOB_NOT_FOUND", http_status=404, message=f"Job '{job_id}' not found.")
-        if session_id and job.session_id and job.session_id != session_id:
-            raise AppError(code="JOB_NOT_FOUND", http_status=404, message=f"Job '{job_id}' not found.")
+            raise AppError(
+                code="JOB_NOT_FOUND", http_status=404, message=f"Job '{job_id}' not found."
+            )
+        if job.session_id is not None and job.session_id != session_id:
+            raise AppError(
+                code="JOB_NOT_FOUND", http_status=404, message=f"Job '{job_id}' not found."
+            )
         return job
 
-    def cancel_job(self, job_id: str, session_id: Optional[str] = None) -> JobProgress:
+    def cancel_job(self, job_id: str, session_id: str | None = None) -> JobProgress:
         job = self.get_job(job_id, session_id)
         if job.status in ("succeeded", "failed", "cancelled"):
             return job
@@ -197,7 +229,9 @@ class JobManager:
             try:
                 await asyncio.wait_for(evt.wait(), timeout=timeout)
             except asyncio.TimeoutError:
-                raise AppError(code="JOB_TIMEOUT", http_status=504, message="Job timed out during execution.")
+                raise AppError(
+                    code="JOB_TIMEOUT", http_status=504, message="Job timed out during execution."
+                )
         return self.get_job(job_id)
 
     async def _run_job_wrapper(self, job: JobProgress, req: GenerationRequest) -> None:
@@ -215,8 +249,8 @@ class JobManager:
                 job.error = {"code": e.code, "message": e.message, "details": e.details}
                 job.updated_at = time.time()
                 self._save_job_snapshot(job)
-            except Exception as e:
-                logger.exception("Job %s execution failed: %s", job.job_id, e)
+            except Exception:  # noqa: BLE001 - convert unhandled job failures into a failed job snapshot
+                logger.exception("Job %s execution failed", job.job_id)
                 job.status = "failed"
                 job.message = "Document generation failed."
                 job.error = {"code": "GENERATION_FAILED", "message": "Document generation failed."}
@@ -229,6 +263,15 @@ class JobManager:
                 self.tasks.pop(job.job_id, None)
 
     async def _execute_job(self, job: JobProgress, req: GenerationRequest) -> None:
+        try:
+            async with asyncio.timeout(settings.GENERATION_DEADLINE_SEC):
+                await self._execute_job_inner(job, req)
+        except TimeoutError as exc:
+            raise LLMTimeout(
+                f"Generation exceeded its {settings.GENERATION_DEADLINE_SEC}-second deadline."
+            ) from exc
+
+    async def _execute_job_inner(self, job: JobProgress, req: GenerationRequest) -> None:
         template_path = get_safe_path(settings.UPLOAD_DIR, req.template_id, "Template")
         if not template_path.exists():
             raise TemplateNotFound(req.template_id)
@@ -243,9 +286,15 @@ class JobManager:
 
         try:
             spec = await anyio.to_thread.run_sync(self.analyzer.analyze, str(template_path))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - analyzer exceptions are translated to a stable API error
             logger.error("Failed to analyze template %s: %s", req.template_id, e)
-            raise AppError(code="TEMPLATE_ANALYSIS_FAILED", http_status=422, message="Template analysis failed.")
+            raise AppError(
+                code="TEMPLATE_ANALYSIS_FAILED",
+                http_status=422,
+                message="Template analysis failed.",
+            )
+
+        planning_spec = select_enabled_template_rules(spec, req.enabled_rule_indices)
 
         # Stage 2: Planning Outline
         job.stage = "planning_outline"
@@ -255,7 +304,7 @@ class JobManager:
         self._save_job_snapshot(job)
 
         output_ext = template_path.suffix.lower() if spec.document_type != "pdf" else ".docx"
-        output_filename = f"generated_{uuid.uuid4().hex[:8]}{output_ext}"
+        output_filename = f"{uuid.uuid4().hex}{output_ext}"
         output_path = settings.OUTPUT_DIR / output_filename
 
         async def report_planning_progress(stage: str, done: int, total: int) -> None:
@@ -272,11 +321,13 @@ class JobManager:
             self._save_job_snapshot(job)
 
         if spec.document_type == "docx":
-            is_edit = (req.mode in ["edit_document", "edit_presentation"] or req.edit_action is not None)
+            is_edit = (
+                req.mode in ["edit_document", "edit_presentation"] or req.edit_action is not None
+            )
             if is_edit and (spec.document_outline or spec.total_pages_or_slides > 1):
                 plan = await self.planner.plan_document_edit(
                     user_prompt=req.prompt,
-                    template_spec=spec,
+                    template_spec=planning_spec,
                     custom_instructions=req.custom_instructions,
                     include_images=req.include_images,
                     image_mode=req.image_mode,
@@ -284,7 +335,7 @@ class JobManager:
             else:
                 plan = await self.planner.plan_document(
                     user_prompt=req.prompt,
-                    template_spec=spec,
+                    template_spec=planning_spec,
                     target_pages=req.target_pages,
                     detail_level=req.detail_level,
                     target_sections=req.target_sections,
@@ -298,17 +349,18 @@ class JobManager:
         elif spec.document_type == "pptx":
             plan = await self.planner.plan_presentation(
                 user_prompt=req.prompt,
-                template_spec=spec,
+                template_spec=planning_spec,
                 target_slides=req.target_slides,
                 custom_instructions=req.custom_instructions,
                 include_images=req.include_images,
                 image_mode=req.image_mode,
+                append_to_existing=req.mode == "edit_presentation",
             )
 
         elif spec.document_type == "pdf":
             plan = await self.planner.plan_document(
                 user_prompt=req.prompt,
-                template_spec=spec,
+                template_spec=planning_spec,
                 target_pages=req.target_pages,
                 detail_level=req.detail_level,
                 target_sections=req.target_sections,
@@ -319,7 +371,9 @@ class JobManager:
                 on_progress=report_planning_progress,
             )
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported document type: {spec.document_type}")
+            raise HTTPException(
+                status_code=400, detail=f"Unsupported document type: {spec.document_type}"
+            )
 
         # Stage 3: Writing Sections
         sections_or_slides = getattr(plan, "sections", None) or getattr(plan, "slides", [])
@@ -368,12 +422,13 @@ class JobManager:
                     spec=spec,
                     plan=plan,
                     output_path=str(output_path),
+                    keep_existing_slides=req.mode == "edit_presentation",
                     warnings=job.warnings,
                 )
             )
         elif spec.document_type == "pdf":
-            from ..engines.pdf_reference import PdfReferenceBuilder
             from ..engines.docx_engine import DocxEngine
+            from ..engines.pdf_reference import PdfReferenceBuilder
             from ..engines.style_lock import LockedTemplate
 
             def render_pdf_base():
@@ -388,7 +443,7 @@ class JobManager:
         # Stage 6: Validating
         job.stage = "validating"
         job.progress = 0.95
-        job.message = "Verifying zero template drift and structural integrity..."
+        job.message = "Comparing supported template properties with the generated file..."
         job.updated_at = time.time()
         self._save_job_snapshot(job)
 
@@ -418,7 +473,7 @@ class JobManager:
             raise AppError(
                 code="TEMPLATE_DRIFT_DETECTED",
                 http_status=422,
-                message="Generated document failed zero-drift template verification.",
+                message="Generated document differs from one or more checked template properties.",
                 details={"issues": val_report.issues, "differences": val_report.differences},
             )
 
@@ -429,7 +484,7 @@ class JobManager:
         if val_report.status == "not_applicable":
             job.message = "Document generated in PDF reference mode (approximate layout)."
         else:
-            job.message = "Document generated with template inheritance verified."
+            job.message = "Document generated; review the validation results and warnings."
         job.updated_at = time.time()
 
         elapsed = round(time.time() - job.created_at, 2)
@@ -439,7 +494,9 @@ class JobManager:
         elif hasattr(plan, "slides"):
             plan_summary = [{"title": s.title, "layout": s.layout_name} for s in plan.slides]
 
-        mode = getattr(plan, "generation_mode", None) or ("demo" if settings.MODEL_PROVIDER == "demo" else "live")
+        mode = getattr(plan, "generation_mode", None) or (
+            "demo" if settings.MODEL_PROVIDER == "demo" else "live"
+        )
         result_warnings = list(
             dict.fromkeys(
                 [
@@ -461,15 +518,20 @@ class JobManager:
             "plan_summary": plan_summary,
             "template_spec": spec.model_dump() if hasattr(spec, "model_dump") else spec.dict(),
             "plan": plan.model_dump() if hasattr(plan, "model_dump") else plan.dict(),
-            "validation": val_report.model_dump() if hasattr(val_report, "model_dump") else val_report.dict(),
+            "validation": val_report.model_dump()
+            if hasattr(val_report, "model_dump")
+            else val_report.dict(),
             "warnings": result_warnings,
-            "research_sources": [source.model_dump() for source in getattr(plan, "research_sources", [])],
+            "research_sources": [
+                source.model_dump() for source in getattr(plan, "research_sources", [])
+            ],
             "timings": {"execution_time_sec": elapsed},
             "execution_time_sec": elapsed,
             "model": settings.MODEL_NAME,
-            "message": "Artifact generated with exact template style and structure preservation.",
+            "message": "Document generated. Review the validation results and any warnings.",
         }
 
+        register_resource_owner("output", output_filename, job.session_id)
         job.result = result
         self._save_job_snapshot(job)
 

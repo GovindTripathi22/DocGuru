@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { CheckCircle2, FileText, Presentation, FileCode } from "lucide-react";
+import { FileText, Presentation, FileCode } from "lucide-react";
 import { TemplateSpec } from "@/types/template";
 
 interface TemplateLockDisplayProps {
@@ -13,9 +13,10 @@ export function TemplateLockDisplay({ spec }: TemplateLockDisplayProps) {
   const isPptx = spec.document_type === "pptx";
   const isPdf = spec.document_type === "pdf";
 
-  const getDimensionDetail = () => {
+  const getDimensionDetail = (): string | undefined => {
     if (isDocx && spec.page) {
-      return `${spec.page.width_pt}x${spec.page.height_pt} pt (${spec.page.orientation || "portrait"})`;
+      const margins = spec.page.margins;
+      return `${spec.page.width_pt} × ${spec.page.height_pt} pt, ${spec.page.orientation}; margins T ${margins.top_pt}, R ${margins.right_pt}, B ${margins.bottom_pt}, L ${margins.left_pt} pt`;
     }
     if (isPptx && spec.slide_dimensions) {
       return `${spec.slide_dimensions.width_inches}" x ${spec.slide_dimensions.height_inches}" (${spec.slide_dimensions.aspect_ratio})`;
@@ -23,46 +24,61 @@ export function TemplateLockDisplay({ spec }: TemplateLockDisplayProps) {
     if (isPdf && spec.page) {
       return `${spec.page.width_pt}x${spec.page.height_pt} pt (PDF Reference)`;
     }
-    return "Standard Layout";
+    return undefined;
   };
 
-  const detectedItems = [
-    {
-      name: "Typography & Fonts",
-      detail: spec.fonts?.all_detected_fonts?.join(", ") || spec.fonts?.default || "Detected in template",
-    },
-    {
-      name: "Theme & Colors",
-      detail: "Palette and accent definitions detected",
-    },
-    {
-      name: "Borders & Rules",
-      detail: "Paragraph, table, and page border properties analyzed",
-    },
-    {
-      name: isDocx ? "Page Margins & Size" : isPptx ? "Slide Dimensions" : "Page Geometry",
-      detail: getDimensionDetail(),
-    },
-    {
-      name: "Headers & Footers",
-      detail:
-        spec.header?.has_content || spec.footer?.has_content
-          ? "Pre-existing header/footer content detected"
-          : "Standard package structure",
-    },
-    {
-      name: isDocx ? "Heading Styles" : isPptx ? "Slide Master & Layouts" : "Visual Structure",
-      detail: isDocx
-        ? spec.available_heading_styles?.join(", ") || "Standard headings"
-        : isPptx
-        ? `${spec.available_layout_names?.length || 0} layouts detected`
-        : "Reconstructed reference layout",
-    },
-    {
-      name: "Table Formatting",
-      detail: `${spec.table_rules?.length || 0} table structures detected`,
-    },
-  ];
+  const detectedItems: Array<{ name: string; detail: string }> = [];
+  const fontNames = [...new Set([
+    ...(spec.fonts?.all_detected_fonts || []),
+    spec.fonts?.default,
+    spec.fonts?.body,
+    spec.fonts?.heading1,
+    spec.fonts?.heading2,
+    spec.theme?.font_scheme?.major_font,
+    spec.theme?.font_scheme?.minor_font,
+  ].filter((font): font is string => typeof font === "string" && font.trim().length > 0))];
+  if (fontNames.length > 0) detectedItems.push({ name: "Fonts found", detail: fontNames.join(", ") });
+
+  const dimensions = getDimensionDetail();
+  if (dimensions) {
+    detectedItems.push({
+      name: isDocx ? "Page size and margins" : isPptx ? "Slide dimensions" : "PDF reference geometry",
+      detail: dimensions,
+    });
+  }
+
+  const themeColors = Object.entries(spec.theme?.color_scheme || {})
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
+    .map(([name, color]) => `${name}: ${color}`);
+  if (themeColors.length > 0) detectedItems.push({ name: "Theme colors", detail: themeColors.join(", ") });
+
+  if (spec.header) {
+    detectedItems.push({
+      name: "Header",
+      detail: spec.header.has_content ? spec.header.text_preview || "Content found" : "No content detected",
+    });
+  }
+  if (spec.footer) {
+    detectedItems.push({
+      name: "Footer",
+      detail: spec.footer.has_content ? spec.footer.text_preview || "Content found" : "No content detected",
+    });
+  }
+  if (isDocx && spec.available_heading_styles) {
+    detectedItems.push({
+      name: "Heading styles",
+      detail: spec.available_heading_styles.length ? spec.available_heading_styles.join(", ") : "None found",
+    });
+  }
+  if (isPptx && spec.available_layout_names) {
+    detectedItems.push({
+      name: "Slide layouts",
+      detail: spec.available_layout_names.length ? spec.available_layout_names.join(", ") : "None found",
+    });
+  }
+  if (spec.table_rules) {
+    detectedItems.push({ name: "Tables found", detail: String(spec.table_rules.length) });
+  }
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-6 backdrop-blur-xl">
@@ -90,48 +106,54 @@ export function TemplateLockDisplay({ spec }: TemplateLockDisplayProps) {
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
               {isDocx
-                ? `${spec.total_pages_or_slides} Section(s)`
+                ? "DOCX template"
                 : isPptx
-                ? `${spec.total_pages_or_slides} Slide(s)`
-                : `${spec.total_pages_or_slides} Page(s)`}{" "}
-              • Fingerprint:{" "}
+                ? "PPTX template"
+                : "PDF reference"}{" "}
+              {spec.style_hash && <>• Style fingerprint:{" "}</>}
+              {spec.style_hash && (
               <code className="font-mono text-zinc-300 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
                 {spec.style_hash}
               </code>
+              )}
             </p>
           </div>
         </div>
 
         <div className="rounded-xl bg-zinc-900 px-3.5 py-2 text-zinc-300 border border-zinc-800">
-          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Template Analysis</div>
-          <div className="text-[11px] text-zinc-400 font-normal">Styles and layout characteristics analyzed</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Source properties</div>
+          <div className="text-[11px] text-zinc-400 font-normal">Values reported by the template analyzer</div>
         </div>
       </div>
 
       <div className="mt-5">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-          Detected Template Components
+          Template properties found
         </h4>
 
-        <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-          {detectedItems.map((item, idx) => (
-            <div
-              key={idx}
-              className="flex items-start gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3"
-            >
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-white">{item.name}</span>
-                  <span className="inline-flex items-center rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 border border-zinc-700">
-                    Detected
-                  </span>
+        {detectedItems.length > 0 ? (
+          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {detectedItems.map((item) => (
+              <div
+                key={item.name}
+                className="flex items-start gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3"
+              >
+                <span aria-hidden="true" className="mt-1 h-2 w-2 shrink-0 rounded-full bg-cyan-400" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-white">{item.name}</span>
+                    <span className="inline-flex items-center rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 border border-zinc-700">
+                      From template
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px] text-zinc-400">{item.detail}</p>
                 </div>
-                <p className="mt-0.5 truncate text-[11px] text-zinc-400">{item.detail}</p>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-zinc-400">The analyzer did not report additional template properties.</p>
+        )}
       </div>
 
       {/* Extracted Document Rules */}

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendFetch } from "@/lib/backend";
+import { ValidationReportSchema } from "@/lib/api-schemas";
+import { proxyJsonResponse } from "@/lib/api-proxy";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,13 +12,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({ detail: "Validation failed" }));
-      return NextResponse.json({ error: errorData.detail || "Validation failed" }, { status: res.status });
-    }
-
-    const data = await res.json();
-    return NextResponse.json(data);
+    return proxyJsonResponse(res, ValidationReportSchema);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to communicate with backend";
     return NextResponse.json({ error: message }, { status: 500 });

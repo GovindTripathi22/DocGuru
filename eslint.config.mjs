@@ -11,6 +11,11 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "coverage/**",
+    ".pytest-work/**",
+    ".task-temp/**",
+    "test-results/**",
+    "tests/.tmp/**",
     "next-env.d.ts",
   ]),
 ]);

@@ -8,7 +8,7 @@ This document records the architectural decisions, trade-offs, and invariants es
 - **The Master Work Order is Law**: Requirements in the master plan supersede preliminary or legacy assumptions.
 - **Fail Fast, Never Fake**: Unconfigured services must return clear, typed errors (e.g. 503 `LLM_NOT_CONFIGURED`) rather than falling back silently to canned demo outputs.
 - **Truthful UI**: The user interface must never present misleading metrics or marketing superlatives ("100% preservation", "Zero Drift", "Sacred"). All reported metrics derive from real backend validation checks.
-- **Offline Self-Sufficiency**: Builds and local operations must succeed without live external network dependencies (no Google Fonts download at build time, robust offline image fallbacks, offline demo provider).
+- **Offline Self-Sufficiency**: Builds and local operations must not require live external network dependencies (no Google Fonts download at build time, image requests only when enabled, offline demo provider).
 
 ---
 
@@ -39,7 +39,7 @@ This document records the architectural decisions, trade-offs, and invariants es
 - **Canonicalization Fingerprinting (`fingerprint.py`)**: Implemented XML c14n sorting and attribute normalization to verify style integrity without false positives from zip metadata.
 - **DOCX Title & Conclusion (`DOCX-01`)**: Explicitly render document titles and concluding sections during new document creation.
 - **PPTX Fallback & List Hierarchy (`PPTX-01`, `PPTX-02`)**: Added capability-matching fallback for slide layouts and safeguarded bullet marker preservation during shape cloning.
-- **Cached Visual Assets (`IMG-01`)**: SHA-256 query caching with strict timeout budgets (<= 2s) and offline geometric SVG generation.
+- **Image retrieval (`IMG-01`–`IMG-04`)**: Image queries use full SHA-256 cache keys, bounded downloads, and explicit provider warnings. Neutral raster placeholders are opt-in; no fixed-photo lookup or SVG fallback is used.
 
 ### Jobs & Asynchronous Processing
 - **202 Accepted Async Pipeline**: `POST /api/generate` returns `202 Accepted` with a `job_id` and snapshot state in `backend/data/jobs/`. Clients poll `GET /api/jobs/{id}` and can cancel via `DELETE /api/jobs/{id}`.

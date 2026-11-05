@@ -3,14 +3,13 @@
 import asyncio
 import json
 import logging
-from typing import Any, Optional
-from pydantic import BaseModel
+from typing import Any
 
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
+from pydantic import BaseModel
 
-from .base import LLMResult
 from ..config import settings
 from ..errors import (
     LLMBlocked,
@@ -21,6 +20,7 @@ from ..errors import (
     LLMTruncated,
     LLMUnavailable,
 )
+from .base import LLMResult, retry_after_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,16 @@ class GoogleAIProvider:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        model_name: Optional[str] = None,
-        temperature: Optional[float] = None,
-        timeout_sec: Optional[int] = None,
+        api_key: str | None = None,
+        model_name: str | None = None,
+        temperature: float | None = None,
+        timeout_sec: int | None = None,
     ):
         self.api_key = api_key or settings.api_key
         self.model_name = model_name or settings.MODEL_NAME
         self.temperature = temperature if temperature is not None else settings.TEMPERATURE
         self.timeout_sec = timeout_sec or settings.LLM_TIMEOUT_SEC
-        self._client: Optional[genai.Client] = None
+        self._client: genai.Client | None = None
 
     def _get_client(self) -> genai.Client:
         if not self.api_key:
@@ -53,9 +53,9 @@ class GoogleAIProvider:
         system: str,
         user: str,
         *,
-        schema: Optional[dict[str, Any] | type[BaseModel]] = None,
-        max_output_tokens: Optional[int] = None,
-        timeout: Optional[float] = None,
+        schema: dict[str, Any] | type[BaseModel] | None = None,
+        max_output_tokens: int | None = None,
+        timeout: float | None = None,
     ) -> LLMResult:
         if not self.api_key:
             raise LLMNotConfigured("Google AI provider requires GEMINI_API_KEY to be set.")
@@ -80,8 +80,10 @@ class GoogleAIProvider:
         if settings.LLM_THINKING == "off":
             try:
                 config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
-            except Exception:
-                pass
+            except (AttributeError, TypeError, ValueError) as exc:
+                logger.debug(
+                    "This Google AI SDK/model does not support disabling thinking: %s", exc
+                )
 
         config = types.GenerateContentConfig(**config_kwargs)
 
@@ -97,13 +99,17 @@ class GoogleAIProvider:
         except APIError as e:
             status_code = getattr(e, "code", 500)
             if status_code == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                raise LLMRateLimited("Google AI rate limit exceeded.") from e
+                response_headers = getattr(getattr(e, "response", None), "headers", {}) or {}
+                raise LLMRateLimited(
+                    "Google AI rate limit exceeded.",
+                    retry_after=retry_after_seconds(response_headers),
+                ) from e
             elif status_code in (500, 502, 503, 504):
                 raise LLMUnavailable(f"Google AI service unavailable: {e.message or e}") from e
             elif status_code == 400 and "API_KEY" in str(e).upper():
                 raise LLMNotConfigured(f"Invalid Google AI credentials: {e.message or e}") from e
             raise LLMUnavailable(f"Google AI API error: {e.message or e}") from e
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - normalize SDK failures to typed provider errors
             err_msg = str(e)
             if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
                 raise LLMRateLimited("Google AI rate limit exceeded.") from e
@@ -147,7 +153,9 @@ class GoogleAIProvider:
         try:
             parsed = json.loads(raw_text)
         except json.JSONDecodeError as e:
-            raise LLMInvalidResponse(f"Google AI returned non-JSON response: {raw_text[:200]}") from e
+            raise LLMInvalidResponse(
+                f"Google AI returned non-JSON response: {raw_text[:200]}"
+            ) from e
 
         prompt_tokens = 0
         completion_tokens = 0

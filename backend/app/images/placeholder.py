@@ -1,8 +1,11 @@
 """Neutral, unbranded image placeholder generator (IMG-03)."""
 
+import logging
 from pathlib import Path
-from typing import Optional
+
 from PIL import Image, ImageDraw, ImageFont
+
+logger = logging.getLogger(__name__)
 
 
 def generate_neutral_placeholder(
@@ -32,7 +35,7 @@ def generate_neutral_placeholder(
     )
 
     # Font handling
-    font = None
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
     font_candidates = [
         "arial.ttf",
         "segoeui.ttf",
@@ -43,7 +46,8 @@ def generate_neutral_placeholder(
         try:
             font = ImageFont.truetype(font_name, 18)
             break
-        except Exception:
+        except OSError as exc:
+            logger.debug("Could not load optional placeholder font %s: %s", font_name, exc)
             continue
 
     if font is None:
@@ -55,7 +59,7 @@ def generate_neutral_placeholder(
     max_chars_per_line = max(20, int((width - 60) / 11))
     words = label.split()
     lines = []
-    curr = []
+    curr: list[str] = []
     curr_len = 0
 
     for word in words:
@@ -82,7 +86,8 @@ def generate_neutral_placeholder(
         try:
             bbox = draw.textbbox((0, 0), line, font=font)
             line_w = bbox[2] - bbox[0]
-        except Exception:
+        except (OSError, ValueError) as exc:
+            logger.debug("Could not measure placeholder line; using estimated width: %s", exc)
             line_w = len(line) * 9
         line_x = max(margin + 10, (width - line_w) // 2)
         line_y = start_y + i * line_spacing
@@ -93,23 +98,4 @@ def generate_neutral_placeholder(
     img.save(tmp_path, format="JPEG", quality=88)
     tmp_path.replace(dest_path)
 
-    # Generate companion SVG asset
-    svg_path = dest_path.with_suffix(".svg")
-    safe_caption = (
-        caption.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-    svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
-  <rect width="100%" height="100%" fill="#f8fafc"/>
-  <rect x="16" y="16" width="{max(1, width - 32)}" height="{max(1, height - 32)}" rx="4" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 4"/>
-  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#64748b" font-family="system-ui, -apple-system, sans-serif" font-size="18">Image placeholder — {safe_caption}</text>
-</svg>'''
-    try:
-        svg_path.write_text(svg_content, encoding="utf-8")
-    except Exception:
-        pass
-
     return dest_path
-

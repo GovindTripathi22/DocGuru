@@ -1,15 +1,15 @@
-from typing import Dict, Any, List
-from pathlib import Path
 import logging
+from pathlib import Path
+from typing import Any
 
-from .style_hash import StyleHasher
-from .diff_validator import DiffValidator
-from ..analyzer.template_analyzer import TemplateAnalyzer
-from ..ai.planner import DocumentPlanner
 from ..ai.executor import DocumentExecutor
+from ..ai.planner import DocumentPlanner
+from ..analyzer.template_analyzer import TemplateAnalyzer
 from ..config import settings
+from .diff_validator import DiffValidator
 
 logger = logging.getLogger(__name__)
+
 
 class RegressionRunner:
     """
@@ -22,7 +22,9 @@ class RegressionRunner:
         self.executor = DocumentExecutor()
         self.validator = DiffValidator()
 
-    async def run_regression_test(self, template_path: str, prompt: str = "Create a test benchmark document") -> Dict[str, Any]:
+    async def run_regression_test(
+        self, template_path: str, prompt: str = "Create a test benchmark document"
+    ) -> dict[str, Any]:
         """
         Executes complete regression flow:
         Template -> Extract Hash -> Plan -> Execute -> Extract Hash -> Compare
@@ -50,5 +52,5 @@ class RegressionRunner:
             "generated_style_hash": validation.generated_style_hash,
             "hash_match": validation.hash_match,
             "passed": validation.passed,
-            "issues": validation.issues
+            "issues": validation.issues,
         }

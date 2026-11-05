@@ -18,16 +18,16 @@ Also covers comprehensive E2E tests for:
 """
 
 import io
+import re
 from pathlib import Path
+
+import docx
+import pptx
 import pytest
 from fastapi.testclient import TestClient
-import docx
-from docx.shared import Inches
-import pptx
-from pptx.util import Inches as PptxInches
 
-from backend.app.main import app
 from backend.app.config import settings
+from backend.app.main import app
 
 
 @pytest.fixture(scope="module")
@@ -45,6 +45,7 @@ def client():
 # ==============================================================================
 # WORKFLOW 1: HEALTH CHECK (GET /api/health)
 # ==============================================================================
+
 
 def test_e2e_workflow_1_health_check(client: TestClient):
     """
@@ -75,6 +76,7 @@ def test_e2e_workflow_1_root_health_alias(client: TestClient):
 # WORKFLOW 2: PROMPT ENHANCEMENT (POST /api/enhance-prompt)
 # ==============================================================================
 
+
 def test_e2e_workflow_2_prompt_enhancement_docx_full_generation(client: TestClient):
     """
     Workflow 2 (Prompt Enhance - DOCX Full Gen):
@@ -82,7 +84,7 @@ def test_e2e_workflow_2_prompt_enhancement_docx_full_generation(client: TestClie
     """
     payload = {
         "prompt": "Autonomous vehicle perception and sensor fusion architecture",
-        "document_type": "docx"
+        "document_type": "docx",
     }
     response = client.post("/api/enhance-prompt", json=payload)
     assert response.status_code == 200, f"Failed prompt enhance: {response.text}"
@@ -98,10 +100,7 @@ def test_e2e_workflow_2_prompt_enhancement_pptx_full_generation(client: TestClie
     Workflow 2 (Prompt Enhance - PPTX Full Gen):
     Verify neural prompt enhancer generates structured presentation slide instructions.
     """
-    payload = {
-        "prompt": "Q4 Enterprise AI Cloud Strategy and Roadmap",
-        "document_type": "pptx"
-    }
+    payload = {"prompt": "Q4 Enterprise AI Cloud Strategy and Roadmap", "document_type": "pptx"}
     response = client.post("/api/enhance-prompt", json=payload)
     assert response.status_code == 200, f"Failed pptx prompt enhance: {response.text}"
     data = response.json()
@@ -118,7 +117,7 @@ def test_e2e_workflow_2_prompt_enhancement_surgical_edit_mode(client: TestClient
     payload = {
         "prompt": "Update Section 3 benchmark metrics to reflect H100 GPU throughput",
         "document_type": "docx",
-        "template_title": "Quarterly Infrastructure Audit"
+        "template_title": "Quarterly Infrastructure Audit",
     }
     response = client.post("/api/enhance-prompt", json=payload)
     assert response.status_code == 200
@@ -132,20 +131,21 @@ def test_e2e_workflow_2_prompt_enhancement_empty_fallback(client: TestClient):
     Workflow 2 (Prompt Enhance - Empty Fallback):
     Verify enhancer gracefully handles empty or whitespace input with standard fallback.
     """
-    payload = {
-        "prompt": "   ",
-        "document_type": "docx"
-    }
+    payload = {"prompt": "   ", "document_type": "docx"}
     response = client.post("/api/enhance-prompt", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert len(data["enhanced_prompt"]) > 0
-    assert "executive report" in data["enhanced_prompt"].lower() or "methodology" in data["enhanced_prompt"].lower()
+    assert (
+        "executive report" in data["enhanced_prompt"].lower()
+        or "methodology" in data["enhanced_prompt"].lower()
+    )
 
 
 # ==============================================================================
 # TEMPLATE UPLOAD ENDPOINT (POST /api/upload)
 # ==============================================================================
+
 
 def test_e2e_upload_docx_template(client: TestClient, sample_docx_template: Path):
     """
@@ -154,7 +154,13 @@ def test_e2e_upload_docx_template(client: TestClient, sample_docx_template: Path
     with open(sample_docx_template, "rb") as f:
         response = client.post(
             "/api/upload",
-            files={"file": (sample_docx_template.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            files={
+                "file": (
+                    sample_docx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
         )
     assert response.status_code == 200, f"Upload failed: {response.text}"
     data = response.json()
@@ -181,7 +187,13 @@ def test_e2e_upload_pptx_template(client: TestClient, sample_pptx_template: Path
     with open(sample_pptx_template, "rb") as f:
         response = client.post(
             "/api/upload",
-            files={"file": (sample_pptx_template.name, f, "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
+            files={
+                "file": (
+                    sample_pptx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
         )
     assert response.status_code == 200, f"Upload failed: {response.text}"
     data = response.json()
@@ -201,8 +213,7 @@ def test_e2e_upload_invalid_extension_rejected(client: TestClient):
     """
     fake_content = b"This is a plain text document."
     response = client.post(
-        "/api/upload",
-        files={"file": ("notes.txt", io.BytesIO(fake_content), "text/plain")}
+        "/api/upload", files={"file": ("notes.txt", io.BytesIO(fake_content), "text/plain")}
     )
     assert response.status_code == 400
     assert "unsupported file type" in response.json()["detail"].lower()
@@ -212,6 +223,7 @@ def test_e2e_upload_invalid_extension_rejected(client: TestClient):
 # TEMPLATE RE-ANALYSIS ENDPOINT (POST /api/analyze)
 # ==============================================================================
 
+
 def test_e2e_analyze_existing_template(client: TestClient, sample_docx_template: Path):
     """
     Verify re-analyzing an existing uploaded template produces identical TemplateSpecification.
@@ -219,7 +231,13 @@ def test_e2e_analyze_existing_template(client: TestClient, sample_docx_template:
     with open(sample_docx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_docx_template.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            files={
+                "file": (
+                    sample_docx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
         )
     template_id = upload_resp.json()["template_id"]
 
@@ -243,6 +261,7 @@ def test_e2e_analyze_nonexistent_template_returns_404(client: TestClient):
 # WORKFLOW 3: DOCX GENERATION & INVARIANT ENFORCEMENT (POST /api/generate)
 # ==============================================================================
 
+
 def test_e2e_workflow_3_docx_generation(client: TestClient, sample_docx_template: Path):
     """
     Workflow 3 (DOCX Generation):
@@ -253,7 +272,13 @@ def test_e2e_workflow_3_docx_generation(client: TestClient, sample_docx_template
     with open(sample_docx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_docx_template.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            files={
+                "file": (
+                    sample_docx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
         )
     assert upload_resp.status_code == 200
     template_id = upload_resp.json()["template_id"]
@@ -265,7 +290,7 @@ def test_e2e_workflow_3_docx_generation(client: TestClient, sample_docx_template
         "prompt": "Comprehensive Audit on Distributed Systems Consensus Latency",
         "document_type": "docx",
         "mode": "create_document",
-        "target_pages_or_slides": 2
+        "target_pages_or_slides": 2,
     }
     gen_resp = client.post("/api/generate?wait=true", json=gen_payload)
     assert gen_resp.status_code == 200, f"Generation failed: {gen_resp.text}"
@@ -274,6 +299,7 @@ def test_e2e_workflow_3_docx_generation(client: TestClient, sample_docx_template
     # 3. Verify response structure
     assert gen_data["success"] is True
     assert gen_data["output_filename"].endswith(".docx")
+    assert re.fullmatch(r"[0-9a-f]{32}\.docx", gen_data["output_filename"])
     assert gen_data["download_url"] == f"/api/download/{gen_data['output_filename']}"
     assert gen_data["execution_time_sec"] >= 0
 
@@ -300,6 +326,7 @@ def test_e2e_workflow_3_docx_generation(client: TestClient, sample_docx_template
 # WORKFLOW 4: DOCX DOWNLOAD & ARTIFACT STREAMING (GET /api/download/{filename})
 # ==============================================================================
 
+
 def test_e2e_workflow_4_docx_download(client: TestClient, sample_docx_template: Path):
     """
     Workflow 4 (DOCX Download):
@@ -310,15 +337,24 @@ def test_e2e_workflow_4_docx_download(client: TestClient, sample_docx_template: 
     with open(sample_docx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_docx_template.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            files={
+                "file": (
+                    sample_docx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate?wait=true", json={
-        "template_id": template_id,
-        "prompt": "Quarterly Financial Analysis & Strategic Benchmarking",
-        "document_type": "docx"
-    })
+    gen_resp = client.post(
+        "/api/generate?wait=true",
+        json={
+            "template_id": template_id,
+            "prompt": "Quarterly Financial Analysis & Strategic Benchmarking",
+            "document_type": "docx",
+        },
+    )
     output_filename = gen_resp.json()["output_filename"]
 
     # 2. Download generated artifact
@@ -326,8 +362,11 @@ def test_e2e_workflow_4_docx_download(client: TestClient, sample_docx_template: 
     assert download_resp.status_code == 200, f"Download failed: {download_resp.status_code}"
 
     # 3. Verify download headers
-    assert download_resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    assert f"filename={output_filename}" in download_resp.headers["content-disposition"]
+    assert (
+        download_resp.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert f'filename="{output_filename}"' in download_resp.headers["content-disposition"]
 
     # 4. Verify binary payload integrity
     binary_content = download_resp.content
@@ -355,6 +394,7 @@ def test_e2e_workflow_4_docx_download(client: TestClient, sample_docx_template: 
 # WORKFLOW 5: PPTX GENERATION & MASTER PRESERVATION (POST /api/generate)
 # ==============================================================================
 
+
 def test_e2e_workflow_5_pptx_generation(client: TestClient, sample_pptx_template: Path):
     """
     Workflow 5 (PPTX Generation):
@@ -365,7 +405,13 @@ def test_e2e_workflow_5_pptx_generation(client: TestClient, sample_pptx_template
     with open(sample_pptx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_pptx_template.name, f, "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
+            files={
+                "file": (
+                    sample_pptx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
         )
     assert upload_resp.status_code == 200
     template_id = upload_resp.json()["template_id"]
@@ -377,7 +423,7 @@ def test_e2e_workflow_5_pptx_generation(client: TestClient, sample_pptx_template
         "prompt": "Autonomous AI Agent Orchestration Architecture",
         "document_type": "pptx",
         "mode": "create_presentation",
-        "target_pages_or_slides": 3
+        "target_pages_or_slides": 3,
     }
     gen_resp = client.post("/api/generate?wait=true", json=gen_payload)
     assert gen_resp.status_code == 200, f"PPTX Generation failed: {gen_resp.text}"
@@ -407,6 +453,7 @@ def test_e2e_workflow_5_pptx_generation(client: TestClient, sample_pptx_template
 # WORKFLOW 6: PPTX DOWNLOAD & PRESENTATION VERIFICATION (GET /api/download/{filename})
 # ==============================================================================
 
+
 def test_e2e_workflow_6_pptx_download(client: TestClient, sample_pptx_template: Path):
     """
     Workflow 6 (PPTX Download):
@@ -417,15 +464,24 @@ def test_e2e_workflow_6_pptx_download(client: TestClient, sample_pptx_template: 
     with open(sample_pptx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_pptx_template.name, f, "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
+            files={
+                "file": (
+                    sample_pptx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate?wait=true", json={
-        "template_id": template_id,
-        "prompt": "Scalable Multi-Agent AI Infrastructure",
-        "document_type": "pptx"
-    })
+    gen_resp = client.post(
+        "/api/generate?wait=true",
+        json={
+            "template_id": template_id,
+            "prompt": "Scalable Multi-Agent AI Infrastructure",
+            "document_type": "pptx",
+        },
+    )
     output_filename = gen_resp.json()["output_filename"]
 
     # 2. Download presentation artifact
@@ -433,8 +489,11 @@ def test_e2e_workflow_6_pptx_download(client: TestClient, sample_pptx_template: 
     assert download_resp.status_code == 200
 
     # 3. Verify headers
-    assert download_resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    assert f"filename={output_filename}" in download_resp.headers["content-disposition"]
+    assert (
+        download_resp.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+    assert f'filename="{output_filename}"' in download_resp.headers["content-disposition"]
 
     # 4. Verify binary payload integrity
     binary_content = download_resp.content
@@ -455,6 +514,7 @@ def test_e2e_workflow_6_pptx_download(client: TestClient, sample_pptx_template: 
 # DIFF VALIDATION ENDPOINT (POST /api/validate)
 # ==============================================================================
 
+
 def test_e2e_validate_endpoint_docx_success(client: TestClient, sample_docx_template: Path):
     """
     Verify POST /api/validate confirms exact style match between template and generated DOCX.
@@ -462,21 +522,29 @@ def test_e2e_validate_endpoint_docx_success(client: TestClient, sample_docx_temp
     with open(sample_docx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_docx_template.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            files={
+                "file": (
+                    sample_docx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate?wait=true", json={
-        "template_id": template_id,
-        "prompt": "Deep Learning Acceleration Benchmark",
-        "document_type": "docx"
-    })
+    gen_resp = client.post(
+        "/api/generate?wait=true",
+        json={
+            "template_id": template_id,
+            "prompt": "Deep Learning Acceleration Benchmark",
+            "document_type": "docx",
+        },
+    )
     generated_filename = gen_resp.json()["output_filename"]
 
-    val_resp = client.post("/api/validate", json={
-        "template_id": template_id,
-        "generated_filename": generated_filename
-    })
+    val_resp = client.post(
+        "/api/validate", json={"template_id": template_id, "generated_filename": generated_filename}
+    )
     assert val_resp.status_code == 200
     report = val_resp.json()
     assert report["passed"] is True
@@ -491,21 +559,29 @@ def test_e2e_validate_endpoint_pptx_success(client: TestClient, sample_pptx_temp
     with open(sample_pptx_template, "rb") as f:
         upload_resp = client.post(
             "/api/upload",
-            files={"file": (sample_pptx_template.name, f, "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
+            files={
+                "file": (
+                    sample_pptx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
         )
     template_id = upload_resp.json()["template_id"]
 
-    gen_resp = client.post("/api/generate?wait=true", json={
-        "template_id": template_id,
-        "prompt": "Cloud Native Storage Evolution",
-        "document_type": "pptx"
-    })
+    gen_resp = client.post(
+        "/api/generate?wait=true",
+        json={
+            "template_id": template_id,
+            "prompt": "Cloud Native Storage Evolution",
+            "document_type": "pptx",
+        },
+    )
     generated_filename = gen_resp.json()["output_filename"]
 
-    val_resp = client.post("/api/validate", json={
-        "template_id": template_id,
-        "generated_filename": generated_filename
-    })
+    val_resp = client.post(
+        "/api/validate", json={"template_id": template_id, "generated_filename": generated_filename}
+    )
     assert val_resp.status_code == 200
     report = val_resp.json()
     assert report["passed"] is True
@@ -517,23 +593,24 @@ def test_e2e_validate_endpoint_missing_files_404(client: TestClient):
     Verify POST /api/validate returns 404 if either template or generated file is missing.
     """
     # Missing template
-    resp1 = client.post("/api/validate", json={
-        "template_id": "nonexistent_template.docx",
-        "generated_filename": "some_file.docx"
-    })
+    resp1 = client.post(
+        "/api/validate",
+        json={"template_id": "nonexistent_template.docx", "generated_filename": "some_file.docx"},
+    )
     assert resp1.status_code == 404
 
     # Missing generated file
-    resp2 = client.post("/api/validate", json={
-        "template_id": "nonexistent.docx",
-        "generated_filename": "nonexistent.docx"
-    })
+    resp2 = client.post(
+        "/api/validate",
+        json={"template_id": "nonexistent.docx", "generated_filename": "nonexistent.docx"},
+    )
     assert resp2.status_code == 404
 
 
 # ==============================================================================
 # FULL LIFECYCLE CHAINED INTEGRATION WORKFLOWS
 # ==============================================================================
+
 
 def test_e2e_full_lifecycle_docx_pipeline(client: TestClient, sample_docx_template: Path):
     """
@@ -548,7 +625,13 @@ def test_e2e_full_lifecycle_docx_pipeline(client: TestClient, sample_docx_templa
     with open(sample_docx_template, "rb") as f:
         upload_res = client.post(
             "/api/upload",
-            files={"file": (sample_docx_template.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+            files={
+                "file": (
+                    sample_docx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
         )
     assert upload_res.status_code == 200
     template_id = upload_res.json()["template_id"]
@@ -556,32 +639,37 @@ def test_e2e_full_lifecycle_docx_pipeline(client: TestClient, sample_docx_templa
 
     # Step 2: Enhance Prompt
     raw_prompt = "Next-Generation Database Performance and Consistency Guarantees"
-    enhance_res = client.post("/api/enhance-prompt", json={
-        "prompt": raw_prompt,
-        "document_type": "docx",
-        "template_title": spec.get("metadata", {}).get("title")
-    })
+    enhance_res = client.post(
+        "/api/enhance-prompt",
+        json={
+            "prompt": raw_prompt,
+            "document_type": "docx",
+            "template_title": spec.get("metadata", {}).get("title"),
+        },
+    )
     assert enhance_res.status_code == 200
     enhanced_prompt = enhance_res.json()["enhanced_prompt"]
 
     # Step 3: Generate
-    gen_res = client.post("/api/generate?wait=true", json={
-        "template_id": template_id,
-        "prompt": enhanced_prompt,
-        "document_type": "docx",
-        "mode": "create_document",
-        "target_pages_or_slides": 2
-    })
+    gen_res = client.post(
+        "/api/generate?wait=true",
+        json={
+            "template_id": template_id,
+            "prompt": enhanced_prompt,
+            "document_type": "docx",
+            "mode": "create_document",
+            "target_pages_or_slides": 2,
+        },
+    )
     assert gen_res.status_code == 200
     gen_data = gen_res.json()
     assert gen_data["validation"]["passed"] is True
     output_filename = gen_data["output_filename"]
 
     # Step 4: Validate
-    val_res = client.post("/api/validate", json={
-        "template_id": template_id,
-        "generated_filename": output_filename
-    })
+    val_res = client.post(
+        "/api/validate", json={"template_id": template_id, "generated_filename": output_filename}
+    )
     assert val_res.status_code == 200
     assert val_res.json()["passed"] is True
 
@@ -606,38 +694,45 @@ def test_e2e_full_lifecycle_pptx_pipeline(client: TestClient, sample_pptx_templa
     with open(sample_pptx_template, "rb") as f:
         upload_res = client.post(
             "/api/upload",
-            files={"file": (sample_pptx_template.name, f, "application/vnd.openxmlformats-officedocument.presentationml.presentation")}
+            files={
+                "file": (
+                    sample_pptx_template.name,
+                    f,
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
+            },
         )
     assert upload_res.status_code == 200
     template_id = upload_res.json()["template_id"]
 
     # Step 2: Enhance Prompt
     raw_prompt = "Zero-Trust Architecture for Cloud Native Microservices"
-    enhance_res = client.post("/api/enhance-prompt", json={
-        "prompt": raw_prompt,
-        "document_type": "pptx"
-    })
+    enhance_res = client.post(
+        "/api/enhance-prompt", json={"prompt": raw_prompt, "document_type": "pptx"}
+    )
     assert enhance_res.status_code == 200
     enhanced_prompt = enhance_res.json()["enhanced_prompt"]
 
     # Step 3: Generate
-    gen_res = client.post("/api/generate?wait=true", json={
-        "template_id": template_id,
-        "prompt": enhanced_prompt,
-        "document_type": "pptx",
-        "mode": "create_presentation",
-        "target_pages_or_slides": 3
-    })
+    gen_res = client.post(
+        "/api/generate?wait=true",
+        json={
+            "template_id": template_id,
+            "prompt": enhanced_prompt,
+            "document_type": "pptx",
+            "mode": "create_presentation",
+            "target_pages_or_slides": 3,
+        },
+    )
     assert gen_res.status_code == 200
     gen_data = gen_res.json()
     assert gen_data["validation"]["passed"] is True
     output_filename = gen_data["output_filename"]
 
     # Step 4: Validate
-    val_res = client.post("/api/validate", json={
-        "template_id": template_id,
-        "generated_filename": output_filename
-    })
+    val_res = client.post(
+        "/api/validate", json={"template_id": template_id, "generated_filename": output_filename}
+    )
     assert val_res.status_code == 200
     assert val_res.json()["passed"] is True
 
@@ -651,6 +746,7 @@ def test_e2e_full_lifecycle_pptx_pipeline(client: TestClient, sample_pptx_templa
 # ==============================================================================
 # SECURITY & ERROR HANDLING EDGE CASES
 # ==============================================================================
+
 
 def test_e2e_download_nonexistent_returns_404(client: TestClient):
     """
@@ -676,7 +772,7 @@ def test_e2e_generate_nonexistent_template_returns_404(client: TestClient):
     payload = {
         "template_id": "nonexistent_template_xyz.docx",
         "prompt": "Test Prompt",
-        "document_type": "docx"
+        "document_type": "docx",
     }
     response = client.post("/api/generate", json=payload)
     assert response.status_code == 404

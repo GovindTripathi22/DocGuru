@@ -12,10 +12,14 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
+tests/.tmp/
 .pytest_cache/
 __pycache__/
 *.pyc
 *.pyo
+.coverage
 
 # next.js
 /.next/
@@ -59,3 +63,6 @@ temp/
 backend/data/
 
 
+
+/.pytest-work/
+/.task-temp/

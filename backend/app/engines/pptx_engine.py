@@ -1,18 +1,17 @@
-from typing import List, Dict, Any, Optional, Tuple
-import copy
 import logging
 from pathlib import Path
-import pptx
-from pptx import Presentation
-from pptx.slide import Slide
-from pptx.shapes.placeholder import PlaceholderGraphicFrame
-from pptx.enum.shapes import MSO_SHAPE, PP_PLACEHOLDER
-from pptx.enum.text import PP_ALIGN
-import pptx.util
+from typing import Any
 
-from .style_lock import LockedPresentation, StyleLock, StyleLockViolationError
-from ..models.generation import PresentationPlan, SlidePlan, TableData
+import pptx
+import pptx.util
+from pptx import Presentation
+from pptx.enum.shapes import PP_PLACEHOLDER
+from pptx.presentation import Presentation as PresentationObject
+from pptx.slide import Slide
+
+from ..models.generation import PresentationPlan, TableData
 from ..models.template_spec import TemplateSpecification
+from .style_lock import LockedPresentation
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +33,10 @@ class PptxEngine:
     def resolve_layout(
         self,
         locked_prs: LockedPresentation,
-        layout_name: Optional[str],
+        layout_name: str | None,
         has_content: bool = True,
-        warnings: Optional[List[str]] = None,
-    ) -> Tuple[Any, str]:
+        warnings: list[str] | None = None,
+    ) -> tuple[Any, str]:
         """
         Capability-based layout resolver (PPTX-01).
         Finds exact or closest layout capable of supporting the slide's content.
@@ -50,15 +49,15 @@ class PptxEngine:
         matched_layout = None
         matched_name = ""
         if layout_name:
-            for l in layouts:
-                if l.name.lower() == layout_name.lower():
-                    matched_layout = l
-                    matched_name = l.name
+            for candidate_layout in layouts:
+                if candidate_layout.name.lower() == layout_name.lower():
+                    matched_layout = candidate_layout
+                    matched_name = candidate_layout.name
                     break
 
         # Check if matched layout has a body/content placeholder
-        def has_body_placeholder(l) -> bool:
-            for ph in l.placeholders:
+        def has_body_placeholder(candidate_layout: Any) -> bool:
+            for ph in candidate_layout.placeholders:
                 if ph.placeholder_format.type in (PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT):
                     return True
             return False
@@ -69,20 +68,22 @@ class PptxEngine:
                 warnings.append(f"layout_substituted:{matched_name}->Content")
 
             # Find first content-capable layout
-            for l in layouts:
-                if has_body_placeholder(l):
-                    return l, l.name
+            for candidate_layout in layouts:
+                if has_body_placeholder(candidate_layout):
+                    return candidate_layout, candidate_layout.name
 
         if matched_layout:
             return matched_layout, matched_name
 
         # Fallback: if has content, find first content-capable layout
         if has_content:
-            for l in layouts:
-                if has_body_placeholder(l):
+            for candidate_layout in layouts:
+                if has_body_placeholder(candidate_layout):
                     if warnings is not None and layout_name:
-                        warnings.append(f"layout_substituted:{layout_name}->{l.name}")
-                    return l, l.name
+                        warnings.append(
+                            f"layout_substituted:{layout_name}->{candidate_layout.name}"
+                        )
+                    return candidate_layout, candidate_layout.name
 
         # Default fallback: layout 0 or 1
         chosen = layouts[1] if len(layouts) > 1 else layouts[0]
@@ -93,14 +94,14 @@ class PptxEngine:
         locked_prs: LockedPresentation,
         layout_name: str,
         title: str,
-        subtitle: Optional[str] = None,
-        bullet_points: Optional[List[str]] = None,
-        body_paragraphs: Optional[List[str]] = None,
-        table_data: Optional[TableData] = None,
-        image_path: Optional[str] = None,
-        speaker_notes: Optional[str] = None,
-        columns: Optional[List[List[str]]] = None,
-        warnings: Optional[List[str]] = None,
+        subtitle: str | None = None,
+        bullet_points: list[str] | None = None,
+        body_paragraphs: list[str] | None = None,
+        table_data: TableData | None = None,
+        image_path: str | None = None,
+        speaker_notes: str | None = None,
+        columns: list[list[str]] | None = None,
+        warnings: list[str] | None = None,
     ) -> Slide:
         """
         Instantiates a new slide using an existing template layout (PPTX-01..03).
@@ -108,7 +109,9 @@ class PptxEngine:
         """
         prs = locked_prs.prs
         has_content = bool(bullet_points or body_paragraphs or table_data or columns)
-        layout, actual_name = self.resolve_layout(locked_prs, layout_name, has_content=has_content, warnings=warnings)
+        layout, _ = self.resolve_layout(
+            locked_prs, layout_name, has_content=has_content, warnings=warnings
+        )
         slide = prs.slides.add_slide(layout)
 
         # 1. Populate Title Placeholder
@@ -149,7 +152,7 @@ class PptxEngine:
 
         # Handle column content for two-content layouts
         if columns and len(body_placeholders) >= 2:
-            for c_idx, col_items in enumerate(columns[:len(body_placeholders)]):
+            for c_idx, col_items in enumerate(columns[: len(body_placeholders)]):
                 tf = body_placeholders[c_idx].text_frame
                 tf.word_wrap = True
                 tf.text = ""
@@ -202,7 +205,7 @@ class PptxEngine:
             if picture_placeholders:
                 try:
                     picture_placeholders[0].insert_picture(image_path)
-                except Exception as e:
+                except (OSError, TypeError, ValueError) as e:
                     logger.warning("Picture placeholder insertion failed: %s", e)
             else:
                 # Place picture on right side without colliding with body
@@ -211,7 +214,7 @@ class PptxEngine:
                 img_w = pptx.util.Inches(slide_w * 0.32)
                 try:
                     slide.shapes.add_picture(image_path, img_left, img_top, width=img_w)
-                except Exception as e:
+                except (OSError, TypeError, ValueError) as e:
                     logger.warning("Slide image insertion failed: %s", e)
                     if warnings is not None:
                         warnings.append(f"image_insertion_failed:{e}")
@@ -220,8 +223,10 @@ class PptxEngine:
         if table_data and (table_data.headers or table_data.rows):
             if table_placeholders:
                 try:
-                    self._insert_table_on_slide(slide, table_data, prs, target_ph=table_placeholders[0])
-                except Exception as e:
+                    self._insert_table_on_slide(
+                        slide, table_data, prs, target_ph=table_placeholders[0]
+                    )
+                except (AttributeError, IndexError, TypeError, ValueError) as e:
                     logger.warning("Table placeholder insertion failed: %s", e)
             else:
                 self._insert_table_on_slide(slide, table_data, prs)
@@ -232,9 +237,20 @@ class PptxEngine:
             tf_notes = notes_slide.notes_text_frame
             tf_notes.text = speaker_notes
 
-        # 7. Clean unused empty placeholders (PPTX-02: never delete title)
+        # Keep non-content placeholders so layout/master footers and slide numbers survive.
+        structural_placeholder_types = {
+            PP_PLACEHOLDER.CENTER_TITLE,
+            PP_PLACEHOLDER.SUBTITLE,
+            PP_PLACEHOLDER.DATE,
+            PP_PLACEHOLDER.HEADER,
+            PP_PLACEHOLDER.FOOTER,
+            PP_PLACEHOLDER.SLIDE_NUMBER,
+        }
+        # 7. Clean unused empty content placeholders (PPTX-02: never delete title)
         for ph in list(slide.placeholders):
             if ph == title_placeholder:
+                continue
+            if ph.placeholder_format.type in structural_placeholder_types:
                 continue
             if hasattr(ph, "text_frame") and not ph.text_frame.text.strip():
                 sp = ph._element
@@ -246,8 +262,8 @@ class PptxEngine:
         self,
         slide: Slide,
         table_data: TableData,
-        prs: Presentation,
-        target_ph: Optional[Any] = None,
+        prs: PresentationObject,
+        target_ph: Any | None = None,
     ) -> Any:
         total_rows = len(table_data.rows) + (1 if table_data.headers else 0)
         total_cols = max(len(table_data.headers), max((len(r) for r in table_data.rows), default=1))
@@ -255,8 +271,8 @@ class PptxEngine:
         if total_rows == 0 or total_cols == 0:
             return None
 
-        slide_w = prs.slide_width.inches if hasattr(prs.slide_width, "inches") else 13.333
-        slide_h = prs.slide_height.inches if hasattr(prs.slide_height, "inches") else 7.5
+        slide_w = prs.slide_width.inches if prs.slide_width is not None else 13.333
+        slide_h = prs.slide_height.inches if prs.slide_height is not None else 7.5
 
         if target_ph is not None:
             left = target_ph.left
@@ -288,7 +304,7 @@ class PptxEngine:
 
         return table_shape
 
-    def clear_existing_slides_preserving_masters(self, prs: Presentation) -> None:
+    def clear_existing_slides_preserving_masters(self, prs: PresentationObject) -> None:
         """
         Removes existing slide instances while strictly preserving slide masters,
         layouts, and presentation themes. Cleans section list references to prevent repair prompts (PPTX-05).
@@ -296,21 +312,18 @@ class PptxEngine:
         slide_count = len(prs.slides)
         for i in range(slide_count - 1, -1, -1):
             rId = prs.slides._sldIdLst[i].rId
-            try:
-                prs.part.drop_rel(rId)
-            except Exception:
-                pass
+            prs.part.drop_rel(rId)
             del prs.slides._sldIdLst[i]
 
-        # Clean sectionLst from extLst in presentation.xml if present
-        try:
-            pres_elm = prs._element
-            for ext in pres_elm.xpath(".//p14:sectionLst", namespaces={"p14": "http://schemas.microsoft.com/office/powerpoint/2010/main"}):
-                parent = ext.getparent()
+        # The p14 namespace is not registered in python-pptx's XPath map, so use
+        # the local element names and remove only extension lists that reference
+        # slides being deleted.
+        pres_elm = prs._element
+        for list_name in ("sectionLst", "custShowLst"):
+            for slide_list in pres_elm.xpath(f".//*[local-name()='{list_name}']"):
+                parent = slide_list.getparent()
                 if parent is not None:
-                    parent.remove(ext)
-        except Exception:
-            pass
+                    parent.remove(slide_list)
 
     def generate_from_plan(
         self,
@@ -318,7 +331,7 @@ class PptxEngine:
         plan: PresentationPlan,
         output_path: str,
         keep_existing_slides: bool = False,
-        warnings: Optional[List[str]] = None,
+        warnings: list[str] | None = None,
     ) -> str:
         """
         Generates presentation slides conforming to PresentationPlan (PPTX-01..06).

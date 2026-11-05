@@ -43,6 +43,7 @@ class TavilyResearchService:
         semaphore = asyncio.Semaphore(3)
         try:
             async with self.client_factory(timeout=self.timeout_sec) as client:
+
                 async def run_query(query: str) -> dict:
                     async with semaphore:
                         response = await client.post(
@@ -58,9 +59,17 @@ class TavilyResearchService:
                             },
                         )
                         if response.status_code == 401:
-                            raise AppError("RESEARCH_NOT_CONFIGURED", 503, "The configured research key was rejected.")
+                            raise AppError(
+                                "RESEARCH_NOT_CONFIGURED",
+                                503,
+                                "The configured research key was rejected.",
+                            )
                         if response.status_code == 429:
-                            raise AppError("RESEARCH_RATE_LIMITED", 429, "The research provider is rate limiting requests.")
+                            raise AppError(
+                                "RESEARCH_RATE_LIMITED",
+                                429,
+                                "The research provider is rate limiting requests.",
+                            )
                         response.raise_for_status()
                         return response.json()
 
@@ -94,7 +103,9 @@ class TavilyResearchService:
                 ):
                     continue
                 title = sanitize_text(result.get("title"), max_len=300, field_name="research_title")
-                snippet = sanitize_text(result.get("content"), max_len=2500, field_name="research_snippet")
+                snippet = sanitize_text(
+                    result.get("content"), max_len=2500, field_name="research_snippet"
+                )
                 if not title or not snippet:
                     continue
                 try:
@@ -108,20 +119,30 @@ class TavilyResearchService:
                     title=title,
                     url=url,
                     snippet=snippet,
-                    published_date=sanitize_text(result["published_date"], max_len=100, field_name="research_date") if result.get("published_date") else None,
+                    published_date=sanitize_text(
+                        result["published_date"], max_len=100, field_name="research_date"
+                    )
+                    if result.get("published_date")
+                    else None,
                     score=score,
                 )
                 previous = sources_by_url.get(url)
-                if previous is None or (score is not None and (previous.score is None or score > previous.score)):
+                if previous is None or (
+                    score is not None and (previous.score is None or score > previous.score)
+                ):
                     sources_by_url[url] = candidate
 
         ranked_sources = sorted(
             sources_by_url.values(),
-            key=lambda source: (source.score is None, -(source.score or 0.0), source.title.casefold()),
+            key=lambda source: (
+                source.score is None,
+                -(source.score or 0.0),
+                source.title.casefold(),
+            ),
         )
         sources = [
             source.model_copy(update={"id": f"S{index}"})
-            for index, source in enumerate(ranked_sources[:self.max_sources], start=1)
+            for index, source in enumerate(ranked_sources[: self.max_sources], start=1)
         ]
 
         if len(sources) < 3:

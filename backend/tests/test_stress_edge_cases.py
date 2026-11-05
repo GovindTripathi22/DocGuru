@@ -1,25 +1,19 @@
-import asyncio
-import copy
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List
 
 import pytest
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, RGBColor
 from pptx import Presentation
-from pptx.util import Inches as PptxInches, Pt as PptxPt
+from pptx.util import Inches as PptxInches
 
 from backend.app.ai.content_fitter import ContentFitter
 from backend.app.analyzer.docx_analyzer import DocxAnalyzer
 from backend.app.analyzer.pptx_analyzer import PptxAnalyzer
-from backend.app.analyzer.template_analyzer import TemplateAnalyzer
 from backend.app.engines.docx_engine import DocxEngine
 from backend.app.engines.pptx_engine import PptxEngine
-from backend.app.engines.style_lock import StyleLock, StyleLockViolationError
 from backend.app.models.generation import (
     DocumentPlan,
     DocumentSection,
@@ -27,13 +21,14 @@ from backend.app.models.generation import (
     SlidePlan,
     TableData,
 )
+from backend.app.models.template_spec import LayoutSpec, PlaceholderSpec, TemplateSpecification
 from backend.app.validation.diff_validator import DiffValidator
 from backend.app.validation.style_hash import StyleHasher
-
 
 # ==============================================================================
 # FIXTURES
 # ==============================================================================
+
 
 @pytest.fixture
 def pptx_4_3_template(tmp_path: Path) -> Path:
@@ -114,6 +109,7 @@ def docx_custom_table_template(tmp_path: Path) -> Path:
 # TEST SUITE 1: MINIMAL TEMPLATES WITHOUT HEADING STYLES
 # ==============================================================================
 
+
 def test_minimal_docx_template_without_heading_styles_safe_fallback(tmp_path: Path):
     """
     R3.1: Minimal templates lacking Heading 1/2 styles must safely fallback
@@ -143,25 +139,22 @@ def test_minimal_docx_template_without_heading_styles_safe_fallback(tmp_path: Pa
                 heading_style="Heading 1",  # Not in template
                 paragraphs=[
                     "First stress paragraph running on bare template.",
-                    "Second stress paragraph with standard formatting."
+                    "Second stress paragraph with standard formatting.",
                 ],
-                bullets=[
-                    "Fallback bullet point Alpha",
-                    "Fallback bullet point Beta"
-                ]
+                bullets=["Fallback bullet point Alpha", "Fallback bullet point Beta"],
             ),
             DocumentSection(
                 title="Secondary Sub-Stress Section",
                 heading_style="Heading 2",  # Not in template
-                paragraphs=["Sub-section paragraph content."]
+                paragraphs=["Sub-section paragraph content."],
             ),
             DocumentSection(
                 title="Tertiary Custom Section",
                 heading_style="NonExistentCustomHeaderStyle",  # Completely arbitrary style name
-                paragraphs=["Tertiary paragraph content."]
-            )
+                paragraphs=["Tertiary paragraph content."],
+            ),
         ],
-        conclusion="Successful execution of bare template stress test."
+        conclusion="Successful execution of bare template stress test.",
     )
 
     output_path = tmp_path / "generated_bare_output.docx"
@@ -182,7 +175,9 @@ def test_minimal_docx_template_without_heading_styles_safe_fallback(tmp_path: Pa
 
     # Verify structural style hash equivalence between original bare template and output
     hasher = StyleHasher()
-    is_match, orig_hash, gen_hash, diffs = hasher.compare_hashes(str(minimal_template), str(output_path))
+    is_match, orig_hash, gen_hash, diffs = hasher.compare_hashes(
+        str(minimal_template), str(output_path)
+    )
     assert is_match is True
     assert orig_hash == gen_hash
     assert diffs == {}
@@ -213,7 +208,9 @@ def test_docx_heading_fallback_safe_insertion(tmp_path: Path):
     assert p1 is not None
     assert p1.text == "Fallback Title Heading 1"
 
-    p2 = engine.insert_heading(locked_doc, "Fallback Title NonExistent", requested_style="NonExistentStyle")
+    p2 = engine.insert_heading(
+        locked_doc, "Fallback Title NonExistent", requested_style="NonExistentStyle"
+    )
     assert p2 is not None
     assert p2.text == "Fallback Title NonExistent"
 
@@ -221,6 +218,7 @@ def test_docx_heading_fallback_safe_insertion(tmp_path: Path):
 # ==============================================================================
 # TEST SUITE 2: 16:9 VS 4:3 SLIDE DIMENSIONS & TABLE SCALING
 # ==============================================================================
+
 
 def test_pptx_4_3_aspect_ratio_fixture_and_layout(pptx_4_3_template: Path, tmp_path: Path):
     """
@@ -249,26 +247,28 @@ def test_pptx_4_3_aspect_ratio_fixture_and_layout(pptx_4_3_template: Path, tmp_p
                 title="4:3 Executive Presentation",
                 subtitle="High Integrity 4:3 Ratio Verification",
                 layout_name=spec.available_layout_names[0],
-                bullet_points=[]
+                bullet_points=[],
             ),
             SlidePlan(
                 slide_number=2,
                 title="4:3 Dimension Matrix & Table Scaling",
-                layout_name=spec.available_layout_names[1] if len(spec.available_layout_names) > 1 else spec.available_layout_names[0],
+                layout_name=spec.available_layout_names[1]
+                if len(spec.available_layout_names) > 1
+                else spec.available_layout_names[0],
                 bullet_points=[
                     "Aspect ratio locked at exactly 4:3 (10.0 x 7.5 in)",
-                    "Dynamic table coordinates proportional to slide bounds"
+                    "Dynamic table coordinates proportional to slide bounds",
                 ],
                 table_data=TableData(
                     headers=["Metric", "4:3 Target", "Result"],
                     rows=[
                         ["Width", "10.0 in", "10.0 in"],
                         ["Height", "7.5 in", "7.5 in"],
-                        ["Scale factor", "0.84", "Preserved"]
-                    ]
-                )
-            )
-        ]
+                        ["Scale factor", "0.84", "Preserved"],
+                    ],
+                ),
+            ),
+        ],
     )
 
     output_path = tmp_path / "generated_4_3_output.pptx"
@@ -303,9 +303,7 @@ def test_pptx_4_3_aspect_ratio_fixture_and_layout(pptx_4_3_template: Path, tmp_p
 
 
 def test_16_9_vs_4_3_dimension_distinction_and_hash_isolation(
-    sample_pptx_template: Path,
-    pptx_4_3_template: Path,
-    tmp_path: Path
+    sample_pptx_template: Path, pptx_4_3_template: Path, tmp_path: Path
 ):
     """
     R3.2: Verify 16:9 (13.333 x 7.5) and 4:3 (10.0 x 7.5) templates produce
@@ -326,7 +324,11 @@ def test_16_9_vs_4_3_dimension_distinction_and_hash_isolation(
     plan_16_9 = PresentationPlan(
         presentation_title="16:9 Test",
         audience="Test",
-        slides=[SlidePlan(slide_number=1, title="16:9 Title", layout_name=spec_16_9.available_layout_names[0])]
+        slides=[
+            SlidePlan(
+                slide_number=1, title="16:9 Title", layout_name=spec_16_9.available_layout_names[0]
+            )
+        ],
     )
     out_16_9 = tmp_path / "out_16_9.pptx"
     engine.generate_from_plan(locked_16_9, plan_16_9, str(out_16_9))
@@ -336,7 +338,11 @@ def test_16_9_vs_4_3_dimension_distinction_and_hash_isolation(
     plan_4_3 = PresentationPlan(
         presentation_title="4:3 Test",
         audience="Test",
-        slides=[SlidePlan(slide_number=1, title="4:3 Title", layout_name=spec_4_3.available_layout_names[0])]
+        slides=[
+            SlidePlan(
+                slide_number=1, title="4:3 Title", layout_name=spec_4_3.available_layout_names[0]
+            )
+        ],
     )
     out_4_3 = tmp_path / "out_4_3.pptx"
     engine.generate_from_plan(locked_4_3, plan_4_3, str(out_4_3))
@@ -355,6 +361,7 @@ def test_16_9_vs_4_3_dimension_distinction_and_hash_isolation(
 # ==============================================================================
 # TEST SUITE 3: CONTENT FITTER (PARAGRAPH & BULLET AUTO-FITTING)
 # ==============================================================================
+
 
 def test_content_fitter_long_paragraph_chunking():
     """
@@ -379,12 +386,12 @@ def test_content_fitter_long_paragraph_chunking():
                     DocumentSection(
                         title="Nested Sub-Analysis",
                         heading_style="Heading 2",
-                        paragraphs=[" ".join([f"subword{i}" for i in range(220)])]
+                        paragraphs=[" ".join([f"subword{i}" for i in range(220)])],
                     )
-                ]
+                ],
             )
         ],
-        conclusion="Done."
+        conclusion="Done.",
     )
 
     fitted_plan = ContentFitter.fit_document_plan(plan)
@@ -407,12 +414,33 @@ def test_content_fitter_long_paragraph_chunking():
     assert len(sub_sec.paragraphs[1].split()) == 70
 
 
+def test_content_fitter_keeps_sentence_boundaries_and_all_characters():
+    text = " ".join(
+        f"Sentence number {index} contains enough words to check the split boundary."
+        for index in range(1, 30)
+    )
+    plan = DocumentPlan(
+        title="Sentence boundary check",
+        sections=[DocumentSection(title="Long section", paragraphs=[text])],
+    )
+
+    fitted = ContentFitter.fit_document_plan(plan)
+    chunks = fitted.sections[0].paragraphs
+
+    assert len(chunks) > 1
+    assert "".join(chunks) == text
+    assert all(chunk.rstrip().endswith((".", "!", "?")) for chunk in chunks[:-1])
+
+
 def test_content_fitter_bullet_overflow_multislide_splitting():
     """
     R3.3: Slide bullet overflow (>5 items) must split into multiple consecutive slides
     with '(Cont.)' continuation titles while strictly reusing identical slide layouts.
     """
-    bullets_14 = [f"Strategic Pillar {i+1}: Action item and detailed guidance description" for i in range(14)]
+    bullets_14 = [
+        f"Strategic Pillar {i + 1}: Action item and detailed guidance description"
+        for i in range(14)
+    ]
 
     plan = PresentationPlan(
         presentation_title="Bullet Overflow Deck",
@@ -423,21 +451,21 @@ def test_content_fitter_bullet_overflow_multislide_splitting():
                 title="Executive Agenda",
                 subtitle="Q4 Operations",
                 layout_name="Title Slide",
-                bullet_points=[]
+                bullet_points=[],
             ),
             SlidePlan(
                 slide_number=2,
                 title="Strategic Initiatives",
                 layout_name="Title and Content",
-                bullet_points=bullets_14
+                bullet_points=bullets_14,
             ),
             SlidePlan(
                 slide_number=3,
                 title="Closing Notes",
                 layout_name="Title and Content",
-                bullet_points=["Single final bullet."]
-            )
-        ]
+                bullet_points=["Single final bullet."],
+            ),
+        ],
     )
 
     fitted_plan = ContentFitter.fit_presentation_plan(plan)
@@ -478,10 +506,49 @@ def test_content_fitter_bullet_overflow_multislide_splitting():
     assert len(s5.bullet_points) == 1
 
 
+def test_content_fitter_uses_template_placeholder_capacity_and_preserves_other_content():
+    bullets = [f"Item {index}" for index in range(1, 5)]
+    spec = TemplateSpecification(
+        filename="small-layout.pptx",
+        document_type="pptx",
+        layouts=[
+            LayoutSpec(
+                index=0,
+                name="Compact Content",
+                placeholders=[
+                    PlaceholderSpec(
+                        index=1,
+                        name="Body",
+                        type="BODY",
+                        width_inches=3,
+                        height_inches=0.8,
+                    )
+                ],
+            )
+        ],
+    )
+    plan = PresentationPlan(
+        presentation_title="Capacity Fit",
+        slides=[
+            SlidePlan(
+                slide_number=1,
+                title="Compact slide",
+                layout_name="Compact Content",
+                bullet_points=bullets,
+                body_paragraphs=["Context that must stay on the first slide."],
+            )
+        ],
+    )
+
+    fitted = ContentFitter.fit_presentation_plan(plan, spec)
+
+    assert [slide.bullet_points for slide in fitted.slides] == [bullets[:2], bullets[2:]]
+    assert fitted.slides[0].body_paragraphs == ["Context that must stay on the first slide."]
+    assert fitted.slides[1].body_paragraphs == []
+
+
 def test_content_fitter_e2e_document_and_presentation_generation(
-    sample_docx_template: Path,
-    sample_pptx_template: Path,
-    tmp_path: Path
+    sample_docx_template: Path, sample_pptx_template: Path, tmp_path: Path
 ):
     """
     R3.3 & R3.6: End-to-end generation of fitted document and presentation plans,
@@ -498,11 +565,9 @@ def test_content_fitter_e2e_document_and_presentation_generation(
         title="Fitted Long Document",
         sections=[
             DocumentSection(
-                title="1. Fitted Section",
-                heading_style="Heading 1",
-                paragraphs=[long_text]
+                title="1. Fitted Section", heading_style="Heading 1", paragraphs=[long_text]
             )
-        ]
+        ],
     )
     doc_plan = ContentFitter.fit_document_plan(doc_plan)
 
@@ -528,9 +593,9 @@ def test_content_fitter_e2e_document_and_presentation_generation(
                 slide_number=1,
                 title="Many Bullets",
                 layout_name=spec_pptx.available_layout_names[1],
-                bullet_points=[f"Action {i}" for i in range(12)]
+                bullet_points=[f"Action {i}" for i in range(12)],
             )
-        ]
+        ],
     )
     prs_plan = ContentFitter.fit_presentation_plan(prs_plan)
     pptx_out = tmp_path / "fitted_gen.pptx"
@@ -546,6 +611,7 @@ def test_content_fitter_e2e_document_and_presentation_generation(
 # TEST SUITE 4: MULTI-ROW TABLE CLONING & EXPANSION
 # ==============================================================================
 
+
 def test_multi_row_table_cloning_and_expansion(docx_custom_table_template: Path, tmp_path: Path):
     """
     R3.4: Test table cloning with large datasets (15+ rows), verifying cell borders,
@@ -558,7 +624,11 @@ def test_multi_row_table_cloning_and_expansion(docx_custom_table_template: Path,
 
     # 20 Data Rows with 3 columns each
     large_dataset = [
-        [f"Service Microservice {i+1:02d}", "Online" if i % 2 == 0 else "Degraded", f"{1000 + i * 250} ops/sec"]
+        [
+            f"Service Microservice {i + 1:02d}",
+            "Online" if i % 2 == 0 else "Degraded",
+            f"{1000 + i * 250} ops/sec",
+        ]
         for i in range(20)
     ]
 
@@ -568,16 +638,18 @@ def test_multi_row_table_cloning_and_expansion(docx_custom_table_template: Path,
             DocumentSection(
                 title="1. Infrastructure Performance Benchmarks",
                 heading_style="Heading 1",
-                paragraphs=["Below is the expanded table containing 20 microservice benchmark records:"],
+                paragraphs=[
+                    "Below is the expanded table containing 20 microservice benchmark records:"
+                ],
                 table_data=TableData(
                     title="Microservice Cluster Telemetry",
                     headers=["Service Microservice", "Health Status", "Query Rate"],
                     rows=large_dataset,
-                    source_table_index=0
-                )
+                    source_table_index=0,
+                ),
             )
         ],
-        conclusion="All 20 rows expanded with template table XML preservation."
+        conclusion="All 20 rows expanded with template table XML preservation.",
     )
 
     output_path = tmp_path / "expanded_table_output.docx"
@@ -626,10 +698,9 @@ def test_multi_row_table_cloning_and_expansion(docx_custom_table_template: Path,
 # TEST SUITE 5: RAPID CONSECUTIVE CALLS & CONCURRENCY STRESS
 # ==============================================================================
 
+
 def test_concurrency_rapid_consecutive_generation_stress(
-    sample_docx_template: Path,
-    sample_pptx_template: Path,
-    tmp_path: Path
+    sample_docx_template: Path, sample_pptx_template: Path, tmp_path: Path
 ):
     """
     R3.5: Execute 12 rapid concurrent generation cycles across DOCX and PPTX,
@@ -657,22 +728,24 @@ def test_concurrency_rapid_consecutive_generation_stress(
                     bullets=[f"Thread bullet {worker_id}.1", f"Thread bullet {worker_id}.2"],
                     table_data=TableData(
                         headers=["Thread ID", "Status"],
-                        rows=[[str(worker_id), "Active"], [f"{worker_id}-sub", "Completed"]]
-                    )
+                        rows=[[str(worker_id), "Active"], [f"{worker_id}-sub", "Completed"]],
+                    ),
                 )
-            ]
+            ],
         )
         out_file = tmp_path / f"concurrent_docx_{worker_id}.docx"
         engine_docx.generate_from_plan(locked_doc, plan, str(out_file))
 
-        is_match, orig_h, gen_h, diffs = hasher.compare_hashes(str(sample_docx_template), str(out_file))
+        is_match, _orig_h, _gen_h, diffs = hasher.compare_hashes(
+            str(sample_docx_template), str(out_file)
+        )
         return {
             "worker_id": worker_id,
             "type": "docx",
             "exists": out_file.exists(),
             "size": out_file.stat().st_size if out_file.exists() else 0,
             "hash_match": is_match,
-            "diffs": diffs
+            "diffs": diffs,
         }
 
     def run_pptx_worker(worker_id: int) -> dict:
@@ -683,27 +756,29 @@ def test_concurrency_rapid_consecutive_generation_stress(
                 SlidePlan(
                     slide_number=1,
                     title=f"Concurrent Slide {worker_id}",
-                    layout_name=spec_pptx.available_layout_names[0]
+                    layout_name=spec_pptx.available_layout_names[0],
                 ),
                 SlidePlan(
                     slide_number=2,
                     title=f"Concurrent Data {worker_id}",
                     layout_name=spec_pptx.available_layout_names[1],
-                    bullet_points=[f"Worker {worker_id} point A", f"Worker {worker_id} point B"]
-                )
-            ]
+                    bullet_points=[f"Worker {worker_id} point A", f"Worker {worker_id} point B"],
+                ),
+            ],
         )
         out_file = tmp_path / f"concurrent_pptx_{worker_id}.pptx"
         engine_pptx.generate_from_plan(locked_prs, plan, str(out_file))
 
-        is_match, orig_h, gen_h, diffs = hasher.compare_hashes(str(sample_pptx_template), str(out_file))
+        is_match, _orig_h, _gen_h, diffs = hasher.compare_hashes(
+            str(sample_pptx_template), str(out_file)
+        )
         return {
             "worker_id": worker_id,
             "type": "pptx",
             "exists": out_file.exists(),
             "size": out_file.stat().st_size if out_file.exists() else 0,
             "hash_match": is_match,
-            "diffs": diffs
+            "diffs": diffs,
         }
 
     results = []
@@ -722,14 +797,19 @@ def test_concurrency_rapid_consecutive_generation_stress(
     for r in results:
         assert r["exists"] is True, f"Worker {r['worker_id']} failed to create file"
         assert r["size"] > 0, f"Worker {r['worker_id']} output is empty"
-        assert r["hash_match"] is True, f"Worker {r['worker_id']} suffered style hash drift: {r['diffs']}"
+        assert r["hash_match"] is True, (
+            f"Worker {r['worker_id']} suffered style hash drift: {r['diffs']}"
+        )
 
 
 # ==============================================================================
 # TEST SUITE 6: STRUCTURAL HASH DIFF COMPARISON & DRIFT DETECTION
 # ==============================================================================
 
-def test_structural_hash_diff_detects_deliberate_margin_drift(sample_docx_template: Path, tmp_path: Path):
+
+def test_structural_hash_diff_detects_deliberate_margin_drift(
+    sample_docx_template: Path, tmp_path: Path
+):
     """
     R3.6: Verify DiffValidator and StyleHasher genuinely detect intentional
     page margin modifications (anti-false-positive validation).
@@ -754,7 +834,9 @@ def test_structural_hash_diff_detects_deliberate_margin_drift(sample_docx_templa
     assert len(report.issues) > 0
 
 
-def test_structural_hash_diff_detects_deliberate_slide_dimension_drift(sample_pptx_template: Path, tmp_path: Path):
+def test_structural_hash_diff_detects_deliberate_slide_dimension_drift(
+    sample_pptx_template: Path, tmp_path: Path
+):
     """
     R3.6: Verify DiffValidator genuinely detects intentional slide dimension changes
     (e.g., altering width from 13.333 to 8.0 inches).

@@ -1,31 +1,27 @@
-export type GenerationDocumentType = "docx" | "pptx" | "pdf";
-export type DetailLevel = "low" | "medium" | "high";
+import type { components } from "@/types/api.generated";
+import type { GenerationMode } from "@/types/template";
+
+export type GenerationDocumentType = components["schemas"]["GenerationRequest"]["document_type"];
+export type DetailLevel = NonNullable<components["schemas"]["GenerationRequest"]["detail_level"]>;
 
 export interface GenerationPromptOptions {
   prompt: string;
-  mode: string;
+  mode: GenerationMode;
+  templateMode?: components["schemas"]["GenerationRequest"]["template_mode"];
   targetPages?: number;
   detailLevel?: DetailLevel;
   targetSlides?: number;
+  editAction?: "append" | "insert_after";
+  editTargetIndex?: number;
+  override?: components["schemas"]["ThemeOverrideRequest"];
   researchEnabled?: boolean;
   customInstructions?: string;
+  enabledRuleIndexes?: number[];
   includeImages?: boolean;
-  imageMode?: "search" | "generate" | "auto";
+  imageMode?: "off" | "search" | "placeholder";
 }
 
-export interface GenerationRequestPayload {
-  template_id: string;
-  prompt: string;
-  document_type: GenerationDocumentType;
-  mode: string;
-  target_pages?: number;
-  detail_level?: DetailLevel;
-  target_slides?: number;
-  research_enabled: boolean;
-  custom_instructions?: string;
-  include_images: boolean;
-  image_mode: "search" | "generate" | "auto";
-}
+export type GenerationRequestPayload = components["schemas"]["GenerationRequest"];
 
 export function buildGenerationPayload(
   templateId: string,
@@ -47,10 +43,11 @@ export function buildGenerationPayload(
     prompt: options.prompt,
     document_type: documentType,
     mode: options.mode,
+    template_mode: options.templateMode ?? "auto",
     research_enabled:
       documentType !== "pptx" && options.mode.startsWith("create") && options.researchEnabled === true,
-    include_images: options.includeImages ?? true,
-    image_mode: options.imageMode ?? "auto",
+    include_images: options.imageMode === "off" ? false : options.includeImages ?? true,
+    image_mode: options.imageMode ?? "search",
   };
 
   if (documentType === "pptx") {
@@ -61,6 +58,11 @@ export function buildGenerationPayload(
     payload.detail_level = options.detailLevel;
   }
 
+  if (options.editAction) payload.edit_action = options.editAction;
+  if (options.editTargetIndex !== undefined) payload.edit_target_index = options.editTargetIndex;
+  if (options.override) payload.overrides = [options.override];
+
   if (options.customInstructions) payload.custom_instructions = options.customInstructions;
+  if (options.enabledRuleIndexes !== undefined) payload.enabled_rule_indices = options.enabledRuleIndexes;
   return payload;
 }

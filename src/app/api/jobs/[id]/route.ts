@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendFetch } from "@/lib/backend";
+import { CancelJobSchema, JobProgressSchema } from "@/lib/api-schemas";
+import { proxyJsonResponse } from "@/lib/api-proxy";
 
 export async function GET(
   req: NextRequest,
@@ -8,8 +10,7 @@ export async function GET(
   try {
     const { id } = await props.params;
     const res = await backendFetch(`/api/jobs/${encodeURIComponent(id)}`);
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return proxyJsonResponse(res, JobProgressSchema);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to fetch job";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -25,8 +26,7 @@ export async function DELETE(
     const res = await backendFetch(`/api/jobs/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return proxyJsonResponse(res, CancelJobSchema);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to cancel job";
     return NextResponse.json({ error: message }, { status: 500 });

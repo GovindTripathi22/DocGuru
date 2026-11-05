@@ -1,3 +1,7 @@
+import type { components } from "./api.generated";
+
+export type GenerationMode = components["schemas"]["GenerationRequest"]["mode"];
+
 export interface TemplatePageMargins {
   top_pt: number;
   bottom_pt: number;
@@ -19,9 +23,16 @@ export interface SlideDimensions {
 }
 
 export interface TemplateFonts {
-  default: string;
+  default?: string | null;
+  body?: string | null;
   heading1?: string;
+  heading2?: string | null;
   all_detected_fonts: string[];
+}
+
+export interface TemplateTheme {
+  color_scheme?: Record<string, string | null> | null;
+  font_scheme?: { major_font?: string | null; minor_font?: string | null } | null;
 }
 
 export interface HeaderFooterInfo {
@@ -36,6 +47,7 @@ export interface TemplateSpec {
   page?: TemplatePageSpec;
   slide_dimensions?: SlideDimensions;
   fonts?: TemplateFonts;
+  theme?: TemplateTheme | null;
   available_heading_styles?: string[];
   available_layout_names?: string[];
   extracted_rules?: string[];
@@ -80,14 +92,19 @@ export interface GenerationPlan {
 
 export interface PromptData {
   prompt: string;
-  mode: string;
+  mode: GenerationMode;
+  templateMode?: "auto" | "fill" | "append";
+  editAction?: "append" | "insert_after";
+  editTargetIndex?: number;
+  override?: { target: "table_border" | "page_border" | "heading_color"; value: string };
   targetPages?: number;
   detailLevel?: "low" | "medium" | "high";
   targetSlides?: number;
   researchEnabled?: boolean;
   customInstructions?: string;
+  enabledRuleIndexes?: number[];
   includeImages?: boolean;
-  imageMode?: "search" | "generate" | "auto";
+  imageMode?: "off" | "search" | "placeholder";
 }
 
 export interface ResearchSource {

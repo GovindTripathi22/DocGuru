@@ -1,10 +1,10 @@
 from pathlib import Path
-from typing import Optional
 
-from .docx_analyzer import DocxAnalyzer
-from .pptx_analyzer import PptxAnalyzer
-from .pdf_analyzer import PdfAnalyzer
 from ..models.template_spec import TemplateSpecification
+from .docx_analyzer import DocxAnalyzer
+from .pdf_analyzer import PdfAnalyzer
+from .pptx_analyzer import PptxAnalyzer
+
 
 class TemplateAnalyzer:
     """

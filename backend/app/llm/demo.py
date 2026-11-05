@@ -2,7 +2,8 @@
 
 import json
 import re
-from typing import Any, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 from .base import LLMResult
@@ -47,9 +48,9 @@ class DemoProvider:
         system: str,
         user: str,
         *,
-        schema: Optional[dict[str, Any] | type[BaseModel]] = None,
-        max_output_tokens: Optional[int] = None,
-        timeout: Optional[float] = None,
+        schema: dict[str, Any] | type[BaseModel] | None = None,
+        max_output_tokens: int | None = None,
+        timeout: float | None = None,
     ) -> LLMResult:
         # Dispatch based on system prompt contract, never raw user message
         if "DOCGURU_TASK: DOCUMENT_OUTLINE" in system:
@@ -73,12 +74,18 @@ class DemoProvider:
             ]
             sections = []
             for index in range(count):
-                section_title = titles[index] if index < len(titles) else f"Additional Consideration {index + 1}"
-                sections.append({
-                    "title": section_title,
-                    "goal": f"Frame {section_title.lower()} in relation to {title}, without assuming facts absent from the prompt.",
-                    "target_words": 300,
-                })
+                section_title = (
+                    titles[index]
+                    if index < len(titles)
+                    else f"Additional Consideration {index + 1}"
+                )
+                sections.append(
+                    {
+                        "title": section_title,
+                        "goal": f"Frame {section_title.lower()} in relation to {title}, without assuming facts absent from the prompt.",
+                        "target_words": 300,
+                    }
+                )
             data = {
                 "title": title,
                 "target_audience": "General audience; adapt the final document to the user's stated context.",
@@ -106,22 +113,50 @@ class DemoProvider:
                 target_words = int(review_input.get("target_words", 0))
                 issues = []
                 if len(words) < max(100, int(target_words * 0.75)):
-                    issues.append("Expand the section to cover its goal at the requested level of detail.")
+                    issues.append(
+                        "Expand the section to cover its goal at the requested level of detail."
+                    )
                 paragraph_text = " ".join(section.get("paragraphs", []))
-                sentences = [sentence.strip().lower() for sentence in re.split(r"(?<=[.!?])\s+", paragraph_text)]
+                sentences = [
+                    sentence.strip().lower()
+                    for sentence in re.split(r"(?<=[.!?])\s+", paragraph_text)
+                ]
                 nonempty_sentences = [sentence for sentence in sentences if sentence]
                 if len(nonempty_sentences) != len(set(nonempty_sentences)):
-                    issues.append("Remove repeated sentences and improve the section's logical flow.")
+                    issues.append(
+                        "Remove repeated sentences and improve the section's logical flow."
+                    )
                 request_terms = {
                     token.lower()
-                    for token in re.findall(r"[A-Za-z0-9]{5,}", review_input.get("user_request", ""))
-                    if token.lower() not in {"about", "which", "their", "there", "would", "could", "should", "create", "write", "report", "document"}
+                    for token in re.findall(
+                        r"[A-Za-z0-9]{5,}", review_input.get("user_request", "")
+                    )
+                    if token.lower()
+                    not in {
+                        "about",
+                        "which",
+                        "their",
+                        "there",
+                        "would",
+                        "could",
+                        "should",
+                        "create",
+                        "write",
+                        "report",
+                        "document",
+                    }
                 }
-                if request_terms and not (request_terms & {token.lower() for token in re.findall(r"[A-Za-z0-9]{4,}", content)}):
+                if request_terms and not (
+                    request_terms
+                    & {token.lower() for token in re.findall(r"[A-Za-z0-9]{4,}", content)}
+                ):
                     issues.append("Tie the section explicitly to the requested topic.")
                 review_data = {"passed": not issues, "issues": issues}
             except (ValueError, TypeError, AttributeError):
-                review_data = {"passed": False, "issues": ["Repair the section so its structure can be reviewed."]}
+                review_data = {
+                    "passed": False,
+                    "issues": ["Repair the section so its structure can be reviewed."],
+                }
             return self._result(review_data, user)
 
         if "DOCGURU_TASK: DOCUMENT_SECTION" in system:
@@ -139,7 +174,9 @@ class DemoProvider:
                 "bullets": [],
                 "citations": [],
             }
-            if re.search(r"\b(?:table|compare|comparison|benchmark)\b", user_request, re.IGNORECASE) and re.search(
+            if re.search(
+                r"\b(?:table|compare|comparison|benchmark)\b", user_request, re.IGNORECASE
+            ) and re.search(
                 r"\b(?:purpose and scope|requested scope|executive summary|overview|analysis|options|tradeoffs?)\b",
                 section_title,
                 re.IGNORECASE,
@@ -148,9 +185,21 @@ class DemoProvider:
                     "caption": "Comparison framework — populate with project-specific evidence",
                     "headers": ["Evaluation dimension", "What to compare", "Evidence to confirm"],
                     "rows": [
-                        ["Objectives", "Fit with the requested outcome", "User-approved goals and constraints"],
-                        ["Implementation", "Dependencies, effort, and operational impact", "Validated requirements and resource estimates"],
-                        ["Risk", "Tradeoffs and conditions that could change the choice", "Documented risks and review criteria"],
+                        [
+                            "Objectives",
+                            "Fit with the requested outcome",
+                            "User-approved goals and constraints",
+                        ],
+                        [
+                            "Implementation",
+                            "Dependencies, effort, and operational impact",
+                            "Validated requirements and resource estimates",
+                        ],
+                        [
+                            "Risk",
+                            "Tradeoffs and conditions that could change the choice",
+                            "Documented risks and review criteria",
+                        ],
                     ],
                 }
             if is_final:
@@ -162,7 +211,11 @@ class DemoProvider:
 
         if "enhanced_prompt" in system.lower():
             title = self._extract_title(user)
-            if "pptx" in system.lower() or "presentation" in user.lower() or "slide" in user.lower():
+            if (
+                "pptx" in system.lower()
+                or "presentation" in user.lower()
+                or "slide" in user.lower()
+            ):
                 enhanced = f"Create an executive presentation on '{title}'. Structure into cohesive slides with strategic vision, technical architecture, and implementation roadmap."
             else:
                 enhanced = f"Generate a publication-grade executive report on '{title}'. Include executive summary, methodology, structured comparison table, and strategic recommendations."
@@ -252,7 +305,7 @@ class DemoProvider:
                         "heading_level": 1,
                         "paragraphs": [
                             f"This demonstration provides a planning scaffold for {title}. Confirm the intended audience, scope, and decisions before using it.",
-                            "Separate information supplied in the request from assumptions that still need authoritative evidence."
+                            "Separate information supplied in the request from assumptions that still need authoritative evidence.",
                         ],
                         "bullet_points": [
                             "State the objective and the boundaries of the requested work",
@@ -266,7 +319,7 @@ class DemoProvider:
                         "heading_level": 1,
                         "paragraphs": [
                             f"Review {title} through the goals, constraints, and tradeoffs described by the user.",
-                            "Where key context is missing, request clarification or state the uncertainty instead of supplying an invented fact."
+                            "Where key context is missing, request clarification or state the uncertainty instead of supplying an invented fact.",
                         ],
                         "bullet_points": [
                             "Compare options using criteria relevant to the requested outcome",
@@ -280,7 +333,7 @@ class DemoProvider:
                         "heading_level": 1,
                         "paragraphs": [
                             "Translate the confirmed scope into practical tasks and assign responsibility using the user's organizational context.",
-                            "Review the completed work with relevant stakeholders and update it when better evidence becomes available."
+                            "Review the completed work with relevant stakeholders and update it when better evidence becomes available.",
                         ],
                         "bullet_points": [
                             "Confirm required inputs and decision owners",
@@ -313,7 +366,9 @@ class DemoProvider:
         return value.strip()
 
     @staticmethod
-    def _demo_section_paragraphs(topic: str, section_title: str, goal: str, target_words: int) -> list[str]:
+    def _demo_section_paragraphs(
+        topic: str, section_title: str, goal: str, target_words: int
+    ) -> list[str]:
         """Build a clearly labeled, non-factual scaffold for offline demo mode."""
         aspects = [
             "define the decision or question the section is meant to address",
@@ -332,14 +387,18 @@ class DemoProvider:
         ]
         for aspect in aspects:
             sentences.append(f"A useful treatment should {aspect} in the context of {topic}")
-        sentences.extend([
-            f"The discussion should distinguish a recommendation about {topic} from the evidence available to support it",
-            "Where the prompt leaves a detail open, the final document should state the uncertainty or request clarification instead of filling the gap with an invented fact",
-        ])
+        sentences.extend(
+            [
+                f"The discussion should distinguish a recommendation about {topic} from the evidence available to support it",
+                "Where the prompt leaves a detail open, the final document should state the uncertainty or request clarification instead of filling the gap with an invented fact",
+            ]
+        )
         text = ". ".join(sentences) + "."
         while len(text.split()) < max(80, target_words):
             for aspect in aspects:
-                addition = f"For this part of {topic}, the author can {aspect} before drawing a conclusion"
+                addition = (
+                    f"For this part of {topic}, the author can {aspect} before drawing a conclusion"
+                )
                 text += " " + addition + "."
                 if len(text.split()) >= max(80, target_words):
                     break

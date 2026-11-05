@@ -2,12 +2,13 @@
 
 import io
 from pathlib import Path
+
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
 from backend.app.config import settings
+from backend.app.main import app
 from backend.app.security import safe_path_join, sanitize_filename
 
 
@@ -29,7 +30,9 @@ def test_analyze_refuses_an_absolute_path_outside_storage(tmp_path: Path):
 
     for payload in traversal_payloads:
         response = client.post("/api/analyze", json={"template_id": payload})
-        assert response.status_code in {400, 404, 422}, f"Failed to reject traversal payload: {payload}"
+        assert response.status_code in {400, 404, 422}, (
+            f"Failed to reject traversal payload: {payload}"
+        )
 
 
 def test_safe_path_join_rejects_escape(tmp_path: Path):
@@ -55,7 +58,13 @@ def test_upload_rejects_junk_file_without_leaving_artifacts(tmp_path: Path):
     junk_bytes = io.BytesIO(b"Not an OpenXML document at all, just random junk bytes.")
     response = client.post(
         "/api/upload",
-        files={"file": ("junk.docx", junk_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        files={
+            "file": (
+                "junk.docx",
+                junk_bytes,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
     )
 
     assert response.status_code in {400, 422}

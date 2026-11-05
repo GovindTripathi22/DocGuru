@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Upload, FileText, Presentation, FileCode, AlertCircle, Loader2 } from "lucide-react";
 import { TemplateUploadResponse } from "@/types/template";
 
@@ -8,12 +8,19 @@ interface FileUploadProps {
   onTemplateLoaded: (templateData: TemplateUploadResponse) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  maxUploadMB?: number;
 }
 
-export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUploadProps) {
+export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading, maxUploadMB = 25 }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadController = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    uploadController.current?.abort();
+    uploadController.current = null;
+  }, []);
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -24,15 +31,23 @@ export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUp
       setError(`Invalid file type "${fileExt}". Please upload a DOCX, PPTX, or PDF file.`);
       return;
     }
+    if (file.size > maxUploadMB * 1024 * 1024) {
+      setError(`File exceeds the ${maxUploadMB} MB upload limit.`);
+      return;
+    }
 
     setIsLoading(true);
     const formData = new FormData();
     formData.append("file", file);
+    uploadController.current?.abort();
+    const controller = new AbortController();
+    uploadController.current = controller;
 
     try {
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -43,14 +58,18 @@ export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUp
       const data = await response.json();
       onTemplateLoaded(data);
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       const message = err instanceof Error ? err.message : "An unexpected error occurred during upload.";
       setError(message);
     } finally {
-      setIsLoading(false);
+      if (uploadController.current === controller) {
+        uploadController.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -60,7 +79,22 @@ export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUp
 
   return (
     <div className="w-full">
-      <div
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".docx,.pptx,.pdf"
+        className="sr-only"
+        tabIndex={-1}
+        aria-label="Choose a DOCX, PPTX, or PDF template"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.currentTarget.value = "";
+          if (file) void handleFile(file);
+        }}
+      />
+
+      <button
+        type="button"
         onDragOver={(e) => {
           e.preventDefault();
           setIsDragOver(true);
@@ -68,27 +102,17 @@ export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUp
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 sm:p-8 text-center transition-all ${
+        disabled={isLoading}
+        aria-describedby={error ? "upload-help upload-error" : "upload-help"}
+        className={`group relative flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-400 sm:p-8 ${
           isDragOver
             ? "border-indigo-500 bg-indigo-50/50 dark:border-indigo-400 dark:bg-indigo-950/20"
             : "border-zinc-300 bg-zinc-50/50 hover:border-zinc-400 hover:bg-zinc-100/50 dark:border-zinc-700 dark:bg-zinc-900/40 dark:hover:border-zinc-600"
         } ${isLoading ? "pointer-events-none opacity-60" : ""}`}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".docx,.pptx,.pdf"
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              handleFile(e.target.files[0]);
-            }
-          }}
-        />
-
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-md shadow-zinc-200/50 ring-1 ring-zinc-200 group-hover:scale-105 transition-transform dark:bg-zinc-800 dark:shadow-none dark:ring-zinc-700">
           {isLoading ? (
-            <Loader2 className="h-7 w-7 animate-spin text-indigo-600 dark:text-indigo-400" />
+            <Loader2 className="h-7 w-7 animate-spin text-indigo-600 motion-reduce:animate-none dark:text-indigo-400" />
           ) : (
             <Upload className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
           )}
@@ -99,8 +123,9 @@ export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUp
             {isLoading ? "Analyzing template structure and styles..." : "Upload Base Template Artifact"}
           </p>
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Drag & drop your DOCX, PPTX, or PDF here, or click to browse
+            Drag & drop your DOCX, PPTX, or PDF here, or press Enter to browse (up to {maxUploadMB} MB)
           </p>
+          <span id="upload-help" className="sr-only">DOCX, PPTX, or PDF files up to {maxUploadMB} megabytes.</span>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
@@ -114,10 +139,10 @@ export function FileUpload({ onTemplateLoaded, isLoading, setIsLoading }: FileUp
             <FileCode className="h-3.5 w-3.5" /> PDF (Reference)
           </span>
         </div>
-      </div>
+      </button>
 
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
+        <div id="upload-error" role="alert" aria-live="assertive" className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
           <span>{error}</span>
         </div>

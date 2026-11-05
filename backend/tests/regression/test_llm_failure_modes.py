@@ -2,11 +2,11 @@
 
 import asyncio
 import time
+
 import pytest
 
 from backend.app.ai.gemma_client import GemmaClient
 from backend.app.ai.planner import DocumentPlanner
-from backend.app.config import Settings
 from backend.app.errors import LLMInvalidResponse, LLMNotConfigured
 from backend.app.llm.demo import DemoProvider
 from backend.app.models.template_spec import TemplateSpecification
@@ -24,7 +24,9 @@ def test_live_provider_without_credentials_never_returns_demo_content():
     client.api_key = ""
 
     async def generate():
-        return await client.generate_structured_json("Return a document plan", "Quarterly retail sales report")
+        return await client.generate_structured_json(
+            "Return a document plan", "Quarterly retail sales report"
+        )
 
     with pytest.raises(LLMNotConfigured) as exc_info:
         asyncio.run(generate())
@@ -134,7 +136,7 @@ def test_async_heartbeat_gap():
 
     elapsed = asyncio.run(runner())
     assert elapsed < 4.0, f"20 concurrent 1s calls took {elapsed:.2f}s (should be < 4s)"
-    assert max_gap <= 0.20, f"Heartbeat gap {max_gap*1000:.1f}ms exceeded 200ms limit"
+    assert max_gap <= 0.20, f"Heartbeat gap {max_gap * 1000:.1f}ms exceeded 200ms limit"
 
 
 def test_prompt_injection_delimited():
@@ -153,11 +155,16 @@ def test_prompt_injection_delimited():
     async def mock_generate(system_prompt: str, user_prompt: str, **kwargs):
         captured_messages.append((system_prompt, user_prompt))
         if "DOCUMENT_OUTLINE" in system_prompt:
-            count = int(system_prompt.split("Return exactly ", 1)[1].split(" ordered sections", 1)[0])
+            count = int(
+                system_prompt.split("Return exactly ", 1)[1].split(" ordered sections", 1)[0]
+            )
             return {
                 "title": "Safe Financial Review",
                 "sections": [
-                    {"title": f"Review Area {index + 1}", "goal": "Assess quarterly financial review considerations"}
+                    {
+                        "title": f"Review Area {index + 1}",
+                        "goal": "Assess quarterly financial review considerations",
+                    }
                     for index in range(count)
                 ],
             }
@@ -166,18 +173,36 @@ def test_prompt_injection_delimited():
         body = " ".join(
             f"A quarterly financial review should evaluate {aspect}, explain its implications for decisions, and identify evidence still needed."
             for aspect in [
-                "planning assumptions", "revenue context", "operating costs", "resource priorities", "risk ownership",
-                "control design", "reporting needs", "decision criteria", "data quality", "review responsibilities",
-                "cash planning", "forecast assumptions", "service commitments", "cost drivers", "policy constraints",
-                "staffing choices", "capital needs", "business dependencies", "monitoring practices", "next steps",
+                "planning assumptions",
+                "revenue context",
+                "operating costs",
+                "resource priorities",
+                "risk ownership",
+                "control design",
+                "reporting needs",
+                "decision criteria",
+                "data quality",
+                "review responsibilities",
+                "cash planning",
+                "forecast assumptions",
+                "service commitments",
+                "cost drivers",
+                "policy constraints",
+                "staffing choices",
+                "capital needs",
+                "business dependencies",
+                "monitoring practices",
+                "next steps",
             ]
         )
-        return {"section": {
-            "title": "Review Area",
-            "paragraphs": [body],
-            "bullets": [],
-            "conclusion": "A quarterly financial review should follow the stated scope and evidence.",
-        }}
+        return {
+            "section": {
+                "title": "Review Area",
+                "paragraphs": [body],
+                "bullets": [],
+                "conclusion": "A quarterly financial review should follow the stated scope and evidence.",
+            }
+        }
 
     planner.client.generate_structured_json = mock_generate
 

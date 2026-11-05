@@ -32,7 +32,7 @@ const STAGE_LABELS: Record<string, string> = {
   writing_sections: "Writing content sections",
   fetching_images: "Resolving and verifying visual assets",
   assembling: "Applying template inheritance",
-  validating: "Validating zero-drift structural integrity",
+  validating: "Comparing generated file with the template",
   done: "Generation completed",
   failed: "Generation failed",
   cancelled: "Generation cancelled",
@@ -42,11 +42,17 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
   const [job, setJob] = useState<JobProgressData | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const completedRef = useRef(false);
+  const pollController = useRef<AbortController | null>(null);
+  const cancelController = useRef<AbortController | null>(null);
+  const pollInFlight = useRef(false);
 
   const pollJob = useCallback(async () => {
-    if (completedRef.current) return;
+    if (completedRef.current || pollInFlight.current) return;
+    pollInFlight.current = true;
+    const controller = new AbortController();
+    pollController.current = controller;
     try {
-      const res = await fetch(`/api/jobs/${jobId}`);
+      const res = await fetch(`/api/jobs/${jobId}`, { signal: controller.signal });
       if (!res.ok) {
         if (res.status === 404) {
           onError({ message: "Job not found on server." });
@@ -70,6 +76,11 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
       }
     } catch {
       // transient network error, retry on next poll tick
+    } finally {
+      if (pollController.current === controller) {
+        pollController.current = null;
+        pollInFlight.current = false;
+      }
     }
   }, [jobId, onComplete, onError, onCancel]);
 
@@ -87,16 +98,23 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
+      pollController.current?.abort();
+      cancelController.current?.abort();
     };
   }, [pollJob]);
 
   const handleCancel = async () => {
     setIsCancelling(true);
+    const controller = new AbortController();
+    cancelController.current?.abort();
+    cancelController.current = controller;
     try {
-      await fetch(`/api/jobs/${jobId}`, { method: "DELETE" });
+      await fetch(`/api/jobs/${jobId}`, { method: "DELETE", signal: controller.signal });
       onCancel();
     } catch {
-      setIsCancelling(false);
+      if (!controller.signal.aborted) setIsCancelling(false);
+    } finally {
+      if (cancelController.current === controller) cancelController.current = null;
     }
   };
 
@@ -107,8 +125,8 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
     <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-950/80 p-6 backdrop-blur-xl space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Loader2 className="h-5 w-5 text-indigo-400 animate-spin" />
-          <div>
+          <Loader2 className="h-5 w-5 text-indigo-400 animate-spin motion-reduce:animate-none" />
+          <div role="status" aria-live="polite" aria-atomic="true">
             <h3 className="text-sm font-semibold text-white">{stageName}</h3>
             <p className="text-xs text-zinc-400">{job?.message || "Running generation pipeline..."}</p>
           </div>
@@ -130,7 +148,14 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
           </span>
           <span className="font-mono text-zinc-200">{progressPercent}%</span>
         </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-900 border border-zinc-800">
+        <div
+          role="progressbar"
+          aria-label="Document generation progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progressPercent}
+          className="h-2 w-full overflow-hidden rounded-full bg-zinc-900 border border-zinc-800"
+        >
           <div
             className="h-full bg-gradient-to-r from-indigo-500 to-cyan-500 transition-all duration-300 ease-out"
             style={{ width: `${progressPercent}%` }}

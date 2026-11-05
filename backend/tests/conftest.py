@@ -1,14 +1,22 @@
-import pytest
 from pathlib import Path
-import docx
+
+import pytest
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import pptx
+from docx.shared import Inches
 from pptx import Presentation
-from pptx.util import Inches as PptxInches, Pt as PptxPt
+from pptx.util import Inches as PptxInches
 
 from backend.app.config import settings
+from backend.app.security import _RATE_WINDOWS
+
+
+@pytest.fixture(autouse=True)
+def reset_test_rate_limits():
+    _RATE_WINDOWS.clear()
+    yield
+    _RATE_WINDOWS.clear()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_test_provider():
@@ -18,10 +26,12 @@ def configure_test_provider():
     yield
     settings.MODEL_PROVIDER = orig
 
+
 @pytest.fixture(scope="session")
 def fixtures_dir(tmp_path_factory) -> Path:
     base = tmp_path_factory.mktemp("fixtures")
     return base
+
 
 @pytest.fixture(scope="session")
 def sample_docx_template(fixtures_dir: Path) -> Path:
@@ -51,16 +61,18 @@ def sample_docx_template(fixtures_dir: Path) -> Path:
     fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # Add Title
-    title = doc.add_paragraph("Corporate Research Template", style="Title")
+    doc.add_paragraph("Corporate Research Template", style="Title")
 
     # Add Heading 1
-    h1 = doc.add_paragraph("1. Section One Header", style="Heading 1")
+    doc.add_paragraph("1. Section One Header", style="Heading 1")
 
     # Add Body Paragraph
-    p1 = doc.add_paragraph("This is the original template body text formatted with standard line spacing and margins.")
+    doc.add_paragraph(
+        "This is the original template body text formatted with standard line spacing and margins."
+    )
 
     # Add Heading 2
-    h2 = doc.add_paragraph("1.1 Sub-section Header", style="Heading 2")
+    doc.add_paragraph("1.1 Sub-section Header", style="Heading 2")
 
     # Add a Styled Table
     table = doc.add_table(rows=3, cols=3)
@@ -73,16 +85,14 @@ def sample_docx_template(fixtures_dir: Path) -> Path:
         if cell.paragraphs[0].runs:
             cell.paragraphs[0].runs[0].font.bold = True
 
-    sample_data = [
-        ["Accuracy", "92.4%", "98.5%"],
-        ["Latency", "45ms", "12ms"]
-    ]
+    sample_data = [["Accuracy", "92.4%", "98.5%"], ["Latency", "45ms", "12ms"]]
     for r_idx, row in enumerate(sample_data):
         for c_idx, val in enumerate(row):
             table.cell(r_idx + 1, c_idx).text = val
 
     doc.save(str(file_path))
     return file_path
+
 
 @pytest.fixture(scope="session")
 def sample_pptx_template(fixtures_dir: Path) -> Path:
