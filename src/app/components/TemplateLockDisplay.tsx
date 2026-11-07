@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Copy,
   Check,
+  ShieldCheck,
 } from "lucide-react";
 import { TemplateSpec } from "@/types/template";
 
@@ -122,11 +123,12 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5 backdrop-blur-xl">
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4 sm:p-5 shadow-lg backdrop-blur-xl space-y-3">
+      {/* Friendly Template Badge & Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div
-            className={`flex h-11 w-11 items-center justify-center rounded-xl border ${
+            className={`flex h-11 w-11 items-center justify-center rounded-xl border shrink-0 ${
               isDocx
                 ? "border-cyan-500/40 bg-cyan-950/40 text-cyan-400"
                 : isPptx
@@ -141,58 +143,32 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-bold text-white text-sm sm:text-base">{spec.filename}</h3>
-              <span className="rounded bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-zinc-300">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                <ShieldCheck className="h-3 w-3" />
+                Template Locked
+              </span>
+              <span className="rounded bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-400">
                 {spec.document_type}
               </span>
-              {themeColorEntries.length > 0 && (
-                <div
-                  className="hidden sm:flex items-center gap-1 ml-1"
-                  title="Detected theme palette"
-                >
-                  {themeColorEntries.slice(0, 5).map(([name, hex]) => (
-                    <span
-                      key={name}
-                      title={`${name}: ${hex}`}
-                      className="h-3 w-3 rounded-sm border border-white/20"
-                      style={{ backgroundColor: hex.startsWith("#") ? hex : `#${hex}` }}
-                    />
-                  ))}
-                </div>
-              )}
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400 mt-0.5 tabular-nums">
-              <span>{isDocx ? "DOCX template" : isPptx ? "PPTX template" : "PDF reference"}</span>
-              {spec.total_pages_or_slides > 0 && (
-                <span>
-                  · {spec.total_pages_or_slides}{" "}
-                  {isPptx
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {isDocx
+                ? "Word Document template"
+                : isPptx
+                ? "PowerPoint presentation template"
+                : "PDF reference format"}
+              {spec.total_pages_or_slides > 0 &&
+                ` · ${spec.total_pages_or_slides} ${
+                  isPptx
                     ? spec.total_pages_or_slides === 1
                       ? "slide"
                       : "slides"
                     : spec.total_pages_or_slides === 1
                     ? "page"
-                    : "pages"}
-                </span>
-              )}
-              {spec.style_hash && (
-                <span className="inline-flex items-center gap-1">
-                  · Fingerprint:{" "}
-                  <button
-                    type="button"
-                    onClick={handleCopyHash}
-                    title="Copy style hash"
-                    className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-300 bg-zinc-900 hover:bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-800 transition-colors"
-                  >
-                    {spec.style_hash}
-                    {copiedHash ? (
-                      <Check className="h-2.5 w-2.5 text-emerald-400" />
-                    ) : (
-                      <Copy className="h-2.5 w-2.5 text-zinc-500" />
-                    )}
-                  </button>
-                </span>
-              )}
-            </div>
+                    : "pages"
+                }`}
+              {" · Design will be preserved 100%"}
+            </p>
           </div>
         </div>
 
@@ -201,7 +177,7 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
             type="button"
             onClick={() => setShowDetails((prev) => !prev)}
             aria-expanded={showDetails}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 hover:text-white transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 hover:text-white transition-colors whitespace-nowrap"
           >
             {showDetails ? (
               <>
@@ -229,29 +205,39 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
         </div>
       </div>
 
+      {/* Collapsible Detected Technical Properties (Clean & Organized) */}
       {showDetails && (
-        <div className="mt-4 border-t border-zinc-800/80 pt-4">
+        <div className="border-t border-zinc-800/80 pt-3 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold text-zinc-400">Template properties found</h4>
-            <span className="text-[11px] text-zinc-500">
-              Values reported by the template analyzer
-            </span>
+            {spec.style_hash && (
+              <button
+                type="button"
+                onClick={handleCopyHash}
+                title="Copy style fingerprint"
+                className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800"
+              >
+                Fingerprint: {spec.style_hash}
+                {copiedHash ? (
+                  <Check className="h-2.5 w-2.5 text-emerald-400" />
+                ) : (
+                  <Copy className="h-2.5 w-2.5 text-zinc-500" />
+                )}
+              </button>
+            )}
           </div>
 
           {detectedItems.length > 0 ? (
-            <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {detectedItems.map((item) => (
                 <div
                   key={item.name}
-                  className="flex flex-col justify-between rounded-xl border border-zinc-800/90 bg-zinc-900/40 p-2.5"
+                  className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-2.5"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-zinc-200">{item.name}</span>
-                    <span className="text-[10px] text-zinc-500">From template</span>
-                  </div>
+                  <span className="text-[11px] font-semibold text-zinc-300 block">{item.name}</span>
                   <p
                     title={item.detail}
-                    className="mt-1 break-words text-xs leading-snug text-zinc-300 tabular-nums line-clamp-2"
+                    className="mt-0.5 text-xs text-zinc-400 leading-snug truncate"
                   >
                     {item.detail}
                   </p>
@@ -259,7 +245,7 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
               ))}
             </div>
           ) : (
-            <p className="mt-2.5 text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400">
               The analyzer did not report additional template properties.
             </p>
           )}
@@ -267,28 +253,27 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
           {/* Extracted Rules & Outline Row */}
           {((spec.extracted_rules && spec.extracted_rules.length > 0) ||
             (spec.document_outline && spec.document_outline.length > 0)) && (
-            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
               {spec.extracted_rules && spec.extracted_rules.length > 0 && (
-                <details className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-3 text-xs text-zinc-300 group">
-                  <summary className="font-medium flex items-center justify-between cursor-pointer list-none select-none text-zinc-200">
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-indigo-400 font-semibold tabular-nums">
+                <details className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-2.5 text-xs text-zinc-300 group">
+                  <summary className="font-medium flex items-center justify-between cursor-pointer list-none select-none text-zinc-300 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-indigo-400 font-bold tabular-nums">
                         [{spec.extracted_rules.length}]
                       </span>
-                      Extracted Formatting Guidelines & Notes
+                      Extracted Formatting Rules
                     </span>
-                    <span className="text-[11px] text-zinc-400 group-open:rotate-180 transition-transform">
+                    <span className="text-[11px] text-zinc-500 group-open:rotate-180 transition-transform">
                       ▼
                     </span>
                   </summary>
-                  <div className="mt-2.5 max-h-40 overflow-y-auto space-y-1.5 pr-1 pt-2 border-t border-zinc-800">
+                  <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1 pt-1.5 border-t border-zinc-800">
                     {spec.extracted_rules.map((rule, rIdx) => (
                       <div
                         key={rIdx}
-                        className="flex items-start gap-2 text-[11px] text-zinc-300 bg-zinc-900 p-2 rounded-lg border border-zinc-800"
+                        className="text-[11px] text-zinc-300 bg-zinc-900/80 p-1.5 rounded border border-zinc-800/60"
                       >
-                        <span className="text-indigo-400 font-bold">•</span>
-                        <span>{rule}</span>
+                        • {rule}
                       </div>
                     ))}
                   </div>
@@ -296,23 +281,23 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
               )}
 
               {spec.document_outline && spec.document_outline.length > 0 && (
-                <details className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-3 text-xs text-zinc-300 group">
-                  <summary className="font-medium flex items-center justify-between cursor-pointer list-none select-none text-zinc-200">
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-cyan-400 font-semibold tabular-nums">
+                <details className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-2.5 text-xs text-zinc-300 group">
+                  <summary className="font-medium flex items-center justify-between cursor-pointer list-none select-none text-zinc-300 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-cyan-400 font-bold tabular-nums">
                         [{spec.document_outline.length}]
                       </span>
                       Detected Heading Outline
                     </span>
-                    <span className="text-[11px] text-zinc-400 group-open:rotate-180 transition-transform">
+                    <span className="text-[11px] text-zinc-500 group-open:rotate-180 transition-transform">
                       ▼
                     </span>
                   </summary>
-                  <div className="mt-2.5 max-h-40 overflow-y-auto flex flex-wrap gap-1.5 pt-2 border-t border-zinc-800">
+                  <div className="mt-2 max-h-36 overflow-y-auto flex flex-wrap gap-1 pt-1.5 border-t border-zinc-800">
                     {spec.document_outline.map((heading, hIdx) => (
                       <span
                         key={hIdx}
-                        className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-1 rounded-md"
+                        className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-0.5 rounded"
                       >
                         {heading}
                       </span>
@@ -326,7 +311,7 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
       )}
 
       {isPdf && (
-        <div className="mt-3 rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 text-xs text-cyan-200">
+        <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-2.5 text-xs text-cyan-200">
           <strong>PDF Reference Mode:</strong> Page dimensions, dominant fonts, and heading sizes
           are measured and applied to a generated DOCX base. Visual layout is approximate.
         </div>
