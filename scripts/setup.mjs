@@ -31,7 +31,10 @@ console.log("Creating the project Python environment...");
 mkdirSync(venv, { recursive: true });
 if (!existsSync(venvPython)) run(python, ["-m", "venv", venv]);
 run(venvPython, ["-m", "pip", "install", "--upgrade", "pip"]);
-run(venvPython, ["-m", "pip", "install", "-r", "backend/requirements-dev.lock"]);
+const reqFile = existsSync(path.join(root, "backend/requirements-dev.lock"))
+  ? "backend/requirements-dev.lock"
+  : "backend/requirements-dev.txt";
+run(venvPython, ["-m", "pip", "install", "-r", reqFile]);
 
 const envFile = path.join(root, ".env");
 if (!existsSync(envFile)) {

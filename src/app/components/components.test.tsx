@@ -238,6 +238,32 @@ describe("FileUpload", () => {
     expect(await screen.findByText("Rejected upload")).toBeInTheDocument();
     expect(setLoading.mock.calls).toEqual([[true], [false]]);
   });
+
+  it("extracts readable message from structured backend error objects and supports sample presets", async () => {
+    const user = userEvent.setup();
+    const onLoaded = vi.fn();
+    const setLoading = vi.fn();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: { code: "INVALID_UPLOAD", message: "Template archive is corrupted." } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ template_id: "sample-1", document_type: "docx", template_spec: makeTemplateSpec("docx") }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<FileUpload onTemplateLoaded={onLoaded} isLoading={false} setIsLoading={setLoading} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(["doc"], "broken.docx")] },
+    });
+
+    expect(await screen.findByText("Template archive is corrupted.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Executive Report \(\.docx\)/i }));
+    await waitFor(() => expect(onLoaded).toHaveBeenCalledWith(expect.objectContaining({ template_id: "sample-1" })));
+  });
 });
 
 describe("mode and template status components", () => {

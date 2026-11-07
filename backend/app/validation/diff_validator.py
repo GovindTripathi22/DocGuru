@@ -56,7 +56,16 @@ class DiffValidator:
                 orig_fp = fingerprint_package(cand)
 
         gen_fp = fingerprint_package(gen_path)
-        overrides_set = set(intentional_overrides or [])
+        override_component_map = {
+            "heading_color": "styles",
+            "page_border": "page_setup",
+            "table_border": "styles",
+        }
+        overrides_set = set(intentional_overrides or []) | {
+            override_component_map[ov]
+            for ov in (intentional_overrides or [])
+            if ov in override_component_map
+        }
 
         components: list[ComponentResult] = []
         issues: list[str] = []
@@ -171,7 +180,9 @@ class DiffValidator:
         ):
             hash_match = False
 
-        if not hash_match:
+        has_unintended_component_change = any(c.status == "changed" for c in components)
+        has_intentional_override = any(c.status == "intentional_override" for c in components)
+        if not hash_match and (has_unintended_component_change or not has_intentional_override):
             if not any("style_hash" in i for i in issues):
                 issues.append(
                     f"Style hash mismatch: original='{orig_style_h}' != generated='{gen_style_h}'"
