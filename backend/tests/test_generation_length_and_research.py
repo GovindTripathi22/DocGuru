@@ -435,6 +435,53 @@ def test_truncated_outline_is_retried_and_empty_outline_is_rejected():
         )
 
 
+def test_outline_section_count_adapts_when_model_returns_slightly_fewer_sections():
+    from backend.app.ai.planner import DocumentPlanner
+
+    class ThirteenSectionClient:
+        def __init__(self):
+            self.calls = []
+
+        async def generate_structured_json(
+            self, system_prompt, user_prompt, response_schema=None, max_tokens=None
+        ):
+            self.calls.append((system_prompt, user_prompt))
+            if "DOCUMENT_OUTLINE" in system_prompt:
+                # Return 13 sections when 14 are expected (high detail / 10 pages)
+                return {
+                    "title": "Autonomous Systems Architecture",
+                    "target_audience": "Technical Leaders",
+                    "sections": [
+                        {"title": f"Core Pillar {i + 1}", "goal": f"Analyze pillar {i + 1}"}
+                        for i in range(13)
+                    ],
+                }
+            if "DOCUMENT_SECTION_QUALITY" in system_prompt:
+                return {"passed": True, "issues": []}
+            return {
+                "section": {
+                    "title": "Section Title",
+                    "paragraphs": [_varied_body("autonomous systems architecture", 12)],
+                    "bullets": [],
+                    "conclusion": "Comprehensive architectural guidelines are established.",
+                }
+            }
+
+    planner = DocumentPlanner()
+    planner.client = ThirteenSectionClient()
+    plan = asyncio.run(
+        planner.plan_document(
+            "Design an autonomous systems architecture report",
+            SimpleNamespace(available_heading_styles=[], extracted_rules=[], document_outline=[]),
+            detail_level="high",  # target_pages=10, budget.section_count=14
+            include_images=False,
+        )
+    )
+    # Proves 13 sections adapt cleanly to 14 sections without crashing!
+    assert len(plan.sections) == 14
+    assert plan.sections[-1].title.startswith("Strategic Implementation Roadmap")
+
+
 def test_unsupported_numerical_claim_gets_one_targeted_section_repair():
     from backend.app.ai.planner import DocumentPlanner
 
