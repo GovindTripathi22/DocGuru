@@ -128,3 +128,34 @@ def test_theme_override_color_validation():
 
     ov = ThemeOverrideRequest(target="heading_color", value="teal")
     assert ov.value == "008080"
+
+
+def test_template_without_headers_footers_preserves_page_setup_and_no_drift(minimal_docx, tmp_path):
+    """VAL-01 and DOCX-01: Templates without headers/footers do not create headers/footers or drift in page_setup."""
+    from backend.app.validation.diff_validator import DiffValidator
+    from backend.app.validation.fingerprint import fingerprint_package
+
+    spec = TemplateAnalyzer().analyze(str(minimal_docx))
+    engine = DocxEngine()
+    plan = DocumentPlan(
+        title="Zero Header Test",
+        sections=[
+            DocumentSection(
+                title="Section A",
+                paragraphs=["Sample paragraph text for test."],
+            )
+        ],
+        conclusion="Clean conclusion without drift.",
+    )
+
+    out_file = tmp_path / "out_no_hf.docx"
+    engine.generate_from_plan(engine.load_template(str(minimal_docx), spec), plan, str(out_file))
+
+    report = DiffValidator().validate(spec, str(out_file), original_file_path=str(minimal_docx))
+    assert report.passed is True
+    assert report.status == "passed"
+    assert report.issues == []
+
+    # Verify no header/footer part was injected
+    fp_gen = fingerprint_package(out_file)
+    assert "headers_footers" not in fp_gen.components

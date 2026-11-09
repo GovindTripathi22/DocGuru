@@ -184,9 +184,20 @@ class DiffValidator:
         has_intentional_override = any(c.status == "intentional_override" for c in components)
         if not hash_match and (has_unintended_component_change or not has_intentional_override):
             if not any("style_hash" in i for i in issues):
-                issues.append(
-                    f"Style hash mismatch: original='{orig_style_h}' != generated='{gen_style_h}'"
-                )
+                if (
+                    orig_fp
+                    and gen_fp
+                    and orig_fp.style_hash
+                    and gen_fp.style_hash
+                    and orig_fp.style_hash != gen_fp.style_hash
+                ):
+                    issues.append(
+                        f"Style hash mismatch: original='{orig_fp.style_hash}' != generated='{gen_fp.style_hash}'"
+                    )
+                else:
+                    issues.append(
+                        f"Style hash mismatch: original='{orig_style_h}' != generated='{gen_style_h}'"
+                    )
             if not margin_drift and not layout_drift:
                 font_drift = True
 

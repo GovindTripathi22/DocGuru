@@ -56,6 +56,17 @@ class DocxEngine:
 
         return saved_table_xmls
 
+    def _resolve_style(self, doc: DocumentObject, style_name: str) -> Any:
+        try:
+            return doc.styles[style_name]
+        except (KeyError, TypeError):
+            for candidate in (style_name.replace(" ", ""), style_name.lower(), style_name.title()):
+                try:
+                    return doc.styles[candidate]
+                except (KeyError, TypeError):
+                    pass
+        return None
+
     def insert_heading(
         self,
         locked_doc: LockedTemplate,
@@ -69,15 +80,18 @@ class DocxEngine:
         )
 
         if validated_style:
-            try:
-                p = doc.add_paragraph(text, style=doc.styles[validated_style])
-                self._apply_multilingual_properties(p, text, locked_doc)
-                return p
-            except (KeyError, TypeError, ValueError):
-                logger.warning(
-                    "Heading style %s could not be applied; using inherited body formatting.",
-                    validated_style,
-                )
+            st = self._resolve_style(doc, validated_style)
+            if st is not None:
+                try:
+                    p = doc.add_paragraph(text, style=st)
+                    self._apply_multilingual_properties(p, text, locked_doc)
+                    return p
+                except (KeyError, TypeError, ValueError):
+                    pass
+            logger.warning(
+                "Heading style %s could not be applied; using inherited body formatting.",
+                validated_style,
+            )
 
         # Fallback to bold paragraph with default style
         if warnings is not None and requested_style:
@@ -101,13 +115,16 @@ class DocxEngine:
         )
 
         if validated_style:
-            try:
-                paragraph = doc.add_paragraph(text, style=doc.styles[validated_style])
-                self._apply_multilingual_properties(paragraph, text, locked_doc)
-                return paragraph
-            except (KeyError, TypeError, ValueError):
-                if warnings is not None:
-                    warnings.append(f"paragraph_style_fallback:{validated_style}")
+            st = self._resolve_style(doc, validated_style)
+            if st is not None:
+                try:
+                    paragraph = doc.add_paragraph(text, style=st)
+                    self._apply_multilingual_properties(paragraph, text, locked_doc)
+                    return paragraph
+                except (KeyError, TypeError, ValueError):
+                    pass
+            if warnings is not None:
+                warnings.append(f"paragraph_style_fallback:{validated_style}")
 
         paragraph = doc.add_paragraph(text)
         self._apply_multilingual_properties(paragraph, text, locked_doc)
@@ -468,10 +485,13 @@ class DocxEngine:
                         process_paragraph(p)
 
         for sec in doc.sections:
-            for p in sec.header.paragraphs:
-                process_paragraph(p)
-            for p in sec.footer.paragraphs:
-                process_paragraph(p)
+            if hasattr(sec, "_sectPr"):
+                if sec._sectPr.xpath("./w:headerReference"):
+                    for p in sec.header.paragraphs:
+                        process_paragraph(p)
+                if sec._sectPr.xpath("./w:footerReference"):
+                    for p in sec.footer.paragraphs:
+                        process_paragraph(p)
 
         return replacements
 
