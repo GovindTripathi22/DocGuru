@@ -407,18 +407,7 @@ class DocxAnalyzer:
 
         if doc.sections:
             sec = doc.sections[0]
-            has_hdr = (
-                bool(sec._sectPr.xpath("./w:headerReference"))
-                if hasattr(sec, "_sectPr")
-                else False
-            )
-            has_ftr = (
-                bool(sec._sectPr.xpath("./w:footerReference"))
-                if hasattr(sec, "_sectPr")
-                else False
-            )
-
-            if has_hdr and sec.header and not sec.header.is_linked_to_previous:
+            if sec.header and not sec.header.is_linked_to_previous:
                 h_text = " ".join([p.text for p in sec.header.paragraphs if p.text.strip()])
                 header_spec = HeaderFooterSpec(
                     has_content=bool(h_text),
@@ -427,7 +416,7 @@ class DocxAnalyzer:
                     paragraph_count=len(sec.header.paragraphs),
                 )
 
-            if has_ftr and sec.footer:
+            if sec.footer and not sec.footer.is_linked_to_previous:
                 f_text = " ".join([p.text for p in sec.footer.paragraphs if p.text.strip()])
                 # Check for page number XML codes
                 has_page_num = False

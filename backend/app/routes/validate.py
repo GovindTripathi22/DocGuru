@@ -56,4 +56,4 @@ async def validate_document(
 def _analyze_and_validate(template_path: str, generated_path: str) -> ValidationReport:
     """Run synchronous document parsing and validation in the bounded worker pool."""
     original_spec = analyzer.analyze(template_path)
-    return validator.validate(original_spec, generated_path)
+    return validator.validate(original_spec, generated_path, original_file_path=template_path)

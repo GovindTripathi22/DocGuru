@@ -3,6 +3,7 @@
 import logging
 
 from docx.document import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
@@ -13,8 +14,9 @@ logger = logging.getLogger(__name__)
 class ListStyleResolver:
     def __init__(self, doc: Document):
         self.doc = doc
-        self.available_styles = {s.name.lower(): s.name for s in doc.styles}
-        self.sorted_style_names = sorted(s.name for s in doc.styles)
+        para_styles = [s for s in doc.styles if s.type == WD_STYLE_TYPE.PARAGRAPH]
+        self.available_styles = {s.name.lower(): s.name for s in para_styles}
+        self.sorted_style_names = sorted(s.name for s in para_styles)
         self.bullet_num_id, self.number_num_id = self._inspect_numbering_part()
 
     def _inspect_numbering_part(self) -> tuple[str | None, str | None]:

@@ -176,8 +176,10 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 paragraphs.append(clean_p)
                 total_content_elements += 1
 
-        # Bullet points
-        raw_bullets = sec.get("bullet_points")
+        # Bullet points (accept both 'bullet_points' and 'bullets')
+        raw_bullets = (
+            sec.get("bullet_points") if sec.get("bullet_points") is not None else sec.get("bullets")
+        )
         if raw_bullets is None:
             raw_bullets = []
         elif not isinstance(raw_bullets, (list, tuple)):
@@ -190,9 +192,9 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 bullet_points.append(clean_b)
                 total_content_elements += 1
 
-        # Table
+        # Table (accept both 'table' and 'table_data')
         table_dict = None
-        raw_table = sec.get("table")
+        raw_table = sec.get("table") if sec.get("table") is not None else sec.get("table_data")
         if isinstance(raw_table, dict):
             raw_headers = raw_table.get("headers")
             if raw_headers is None:
@@ -222,7 +224,7 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                     total_content_elements += 1
             if headers or clean_rows:
                 caption = sanitize_text(
-                    raw_table.get("caption") or "Data Table",
+                    raw_table.get("caption") or raw_table.get("title") or "Data Table",
                     max_len=200,
                     field_name="table_caption",
                 )
@@ -234,6 +236,10 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                     "section_number": idx + 1,
                     "title": sec_title,
                     "heading_level": heading_level,
+                    "heading_style": sec.get("heading_style"),
+                    "action": sec.get("action"),
+                    "target_heading": sec.get("target_heading"),
+                    "image_query": sec.get("image_query"),
                     "paragraphs": paragraphs,
                     "bullet_points": bullet_points,
                     "table": table_dict,
@@ -250,6 +256,7 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
         "target_audience": target_audience,
         "sections": normalized_sections,
         "conclusion": conclusion,
+        "applied_rules": raw.get("applied_rules") or [],
     }
 
 
@@ -277,6 +284,11 @@ def _normalize_presentation_plan(raw: dict[str, Any]) -> dict[str, Any]:
         slide_title = sanitize_text(
             slide.get("title") or f"Slide {idx + 1}", max_len=200, field_name="slide_title"
         )
+        subtitle = (
+            sanitize_text(slide.get("subtitle"), max_len=300, field_name="subtitle")
+            if slide.get("subtitle")
+            else None
+        )
         layout_name = sanitize_text(
             slide.get("layout_name") or "Title and Content", max_len=100, field_name="layout_name"
         )
@@ -296,8 +308,12 @@ def _normalize_presentation_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 body_paragraphs.append(clean_p)
                 total_content_elements += 1
 
-        # Bullet points
-        raw_bullets = slide.get("bullet_points") or []
+        # Bullet points (accept both 'bullet_points' and 'bullets')
+        raw_bullets = (
+            slide.get("bullet_points")
+            if slide.get("bullet_points") is not None
+            else (slide.get("bullets") or [])
+        )
         if isinstance(raw_bullets, str):
             raw_bullets = [raw_bullets]
         bullet_points = []
@@ -308,14 +324,27 @@ def _normalize_presentation_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 bullet_points.append(clean_b)
                 total_content_elements += 1
 
+        raw_table = (
+            slide.get("table_data") if slide.get("table_data") is not None else slide.get("table")
+        )
+        if isinstance(raw_table, dict) and (raw_table.get("headers") or raw_table.get("rows")):
+            total_content_elements += 1
+
+        if subtitle:
+            total_content_elements += 1
+
         normalized_slides.append(
             {
                 "slide_number": idx + 1,
                 "title": slide_title,
+                "subtitle": subtitle,
                 "layout_name": layout_name,
                 "layout_role": layout_role,
                 "body_paragraphs": body_paragraphs,
                 "bullet_points": bullet_points,
+                "table_data": raw_table if isinstance(raw_table, dict) else None,
+                "image_query": slide.get("image_query"),
+                "columns": slide.get("columns") if isinstance(slide.get("columns"), list) else None,
                 "speaker_notes": sanitize_text(
                     slide.get("speaker_notes") or "", max_len=2000, field_name="speaker_notes"
                 ),

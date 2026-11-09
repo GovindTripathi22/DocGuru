@@ -150,12 +150,17 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
                     except (etree.XMLSyntaxError, TypeError, ValueError):
                         components["settings_compat"] = hash_bytes(canonicalize_xml(raw_settings))
 
-                # 6. Page setup (sectPr in document order)
+                # 6. Page setup (body-level sectPr so cleared mid-body paragraph sectPrs do not false-positive)
                 if "word/document.xml" in namelist:
                     try:
                         parser = etree.XMLParser(remove_blank_text=True)
                         doc_tree = etree.fromstring(zf.read("word/document.xml"), parser=parser)
-                        sect_prs = _xpath_elements(doc_tree, "//*[local-name()='sectPr']")
+                        sect_prs = _xpath_elements(
+                            doc_tree, "//*[local-name()='body']/*[local-name()='sectPr']"
+                        )
+                        if not sect_prs:
+                            all_sect_prs = _xpath_elements(doc_tree, "//*[local-name()='sectPr']")
+                            sect_prs = all_sect_prs[-1:] if all_sect_prs else []
                         page_setup_bytes = b"".join(
                             canonicalize_xml(etree.tostring(sp)) for sp in sect_prs
                         )
@@ -215,10 +220,13 @@ def fingerprint_package(package_path: str | Path) -> PackageFingerprint:
                 if l_bytes:
                     components["layouts"] = hash_bytes(l_bytes)
 
-                # 4. Themes
-                theme_parts = sorted(
-                    [n for n in namelist if n.startswith("ppt/theme/") and n.endswith(".xml")]
-                )
+                # 4. Themes (hash primary presentation theme1.xml if present so auto-created notesMaster theme2.xml does not cause false-positive drift)
+                if "ppt/theme/theme1.xml" in namelist:
+                    theme_parts = ["ppt/theme/theme1.xml"]
+                else:
+                    theme_parts = sorted(
+                        [n for n in namelist if n.startswith("ppt/theme/") and n.endswith(".xml")]
+                    )
                 t_bytes = b"".join(canonicalize_xml(zf.read(p)) for p in theme_parts)
                 if t_bytes:
                     components["themes"] = hash_bytes(t_bytes)
