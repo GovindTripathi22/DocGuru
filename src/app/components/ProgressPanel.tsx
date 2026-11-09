@@ -122,31 +122,31 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
   const stageName = job?.stage ? (STAGE_LABELS[job.stage] || job.stage) : "Processing";
 
   return (
-    <div className="w-full rounded-2xl border border-white/10 bg-zinc-950/85 p-6 backdrop-blur-2xl shadow-2xl space-y-5 animate-fade-in-up">
+    <div className="w-full rounded-2xl border border-sky-200/80 bg-white/95 p-6 backdrop-blur-2xl shadow-[0_8px_30px_rgba(186,230,253,0.35)] space-y-5 animate-fade-in-up transition-all">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Loader2 className="h-5 w-5 text-indigo-400 animate-spin motion-reduce:animate-none" />
+          <Loader2 className="h-5 w-5 text-sky-600 animate-spin motion-reduce:animate-none" />
           <div role="status" aria-live="polite" aria-atomic="true">
-            <h3 className="text-sm font-semibold text-white">{stageName}</h3>
-            <p className="text-xs text-zinc-400">{job?.message || "Running generation pipeline..."}</p>
+            <h3 className="text-sm font-bold text-slate-900">{stageName}</h3>
+            <p className="text-xs text-slate-500 font-medium">{job?.message || "Running generation pipeline..."}</p>
           </div>
         </div>
 
         <button
           onClick={handleCancel}
           disabled={isCancelling}
-          className="rounded-lg border border-red-500/30 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/50 transition-colors disabled:opacity-50"
+          className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors disabled:opacity-50 shadow-sm"
         >
           {isCancelling ? "Cancelling..." : "Cancel Job"}
         </button>
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-zinc-400">
+        <div className="flex items-center justify-between text-xs text-slate-600 font-medium">
           <span>
             {job?.current ? `Items: ${job.current.done} of ${job.current.total}` : "Progress"}
           </span>
-          <span className="font-mono text-zinc-200">{progressPercent}%</span>
+          <span className="font-mono font-bold text-sky-900">{progressPercent}%</span>
         </div>
         <div
           role="progressbar"
@@ -154,19 +154,19 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={progressPercent}
-          className="h-2 w-full overflow-hidden rounded-full bg-zinc-900 border border-zinc-800"
+          className="h-2.5 w-full overflow-hidden rounded-full bg-sky-100 border border-sky-200"
         >
           <div
-            className="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 transition-all duration-500 ease-out relative shadow-[0_0_12px_rgba(168,85,247,0.5)]"
+            className="h-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-400 transition-all duration-500 ease-out relative shadow-[0_0_12px_rgba(14,165,233,0.45)]"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
       </div>
 
       {job?.warnings && job.warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3 space-y-1.5 text-xs text-amber-200">
-          <div className="flex items-center gap-1.5 font-medium text-amber-400">
-            <AlertTriangle className="h-3.5 w-3.5" /> Pipeline Warnings
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-1.5 text-xs text-amber-900 shadow-sm">
+          <div className="flex items-center gap-1.5 font-bold text-amber-800">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Pipeline Warnings
           </div>
           <ul className="list-disc pl-4 space-y-0.5">
             {job.warnings.map((w, idx) => (

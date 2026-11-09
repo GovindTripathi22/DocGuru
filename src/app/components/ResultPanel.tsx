@@ -233,32 +233,32 @@ export function ResultPanel({
     <div className="w-full space-y-5">
       {/* Status Banner */}
       <div
-        className={`rounded-2xl border p-5 sm:p-6 backdrop-blur-xl ${
+        className={`rounded-2xl border p-5 sm:p-6 backdrop-blur-xl shadow-lg transition-all ${
           isPdf
-            ? "border-cyan-500/30 bg-cyan-950/20 text-cyan-200"
+            ? "border-sky-300 bg-sky-50/90 text-sky-950"
             : valStatus === "passed"
-            ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-200"
-            : "border-red-500/40 bg-red-950/30 text-red-200"
+            ? "border-emerald-300 bg-emerald-50/90 text-emerald-950"
+            : "border-rose-300 bg-rose-50/90 text-rose-950"
         }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             {isPdf ? (
-              <FileCheck className="h-6 w-6 text-cyan-400 shrink-0" />
+              <FileCheck className="h-6 w-6 text-sky-600 shrink-0" />
             ) : valStatus === "passed" ? (
-              <CheckCircle2 className="h-6 w-6 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
             ) : (
-              <AlertCircle className="h-6 w-6 text-red-400 shrink-0" />
+              <AlertCircle className="h-6 w-6 text-rose-600 shrink-0" />
             )}
             <div>
-              <h2 className="text-base font-semibold text-white">
+              <h2 className="text-base font-bold text-slate-900">
                 {isPdf
                   ? "Approximate layout (PDF reference mode)"
                   : valStatus === "passed"
                   ? "Template checks passed"
                   : "Template Drift Detected"}
               </h2>
-              <p className="text-xs text-zinc-300 mt-0.5">
+              <p className="text-xs text-slate-600 font-medium mt-0.5">
                 {isPdf
                   ? "Derived layout dimensions, typography, and margins from PDF structure."
                   : valStatus === "passed"
@@ -273,7 +273,7 @@ export function ResultPanel({
               <a
                 href={result.download_url}
                 download={result.output_filename}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md hover:bg-indigo-500 transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 via-sky-500 to-cyan-500 px-4 py-2.5 text-xs font-bold text-white shadow-[0_0_16px_rgba(14,165,233,0.35)] hover:shadow-[0_0_24px_rgba(14,165,233,0.55)] hover:scale-[1.02] transition-all whitespace-nowrap shrink-0"
               >
                 <Download className="h-4 w-4" /> Download Artifact
               </a>
@@ -281,13 +281,13 @@ export function ResultPanel({
               <div className="flex flex-col items-end gap-1">
                 <button
                   disabled
-                  className="inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2.5 text-xs font-medium text-zinc-500 cursor-not-allowed whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-500 cursor-not-allowed whitespace-nowrap shrink-0 shadow-sm"
                 >
                   <Download className="h-4 w-4" /> Download Disabled (Drift Detected)
                 </button>
                 <a
                   href={result.download_url}
-                  className="text-[11px] text-zinc-400 hover:text-zinc-300 underline"
+                  className="text-[11px] text-slate-500 hover:text-slate-800 underline font-medium"
                 >
                   Download anyway for diagnostics
                 </a>
@@ -297,10 +297,10 @@ export function ResultPanel({
             <button
               onClick={handleReverify}
               disabled={revalidating}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-950 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 shadow-sm"
             >
               <RotateCcw
-                className={`h-3.5 w-3.5 motion-reduce:animate-none ${
+                className={`h-3.5 w-3.5 text-slate-500 motion-reduce:animate-none ${
                   revalidating ? "animate-spin" : ""
                 }`}
               />{" "}
@@ -311,9 +311,9 @@ export function ResultPanel({
               <button
                 type="button"
                 onClick={onEditPrompt}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-950 transition-colors whitespace-nowrap shrink-0 shadow-sm"
               >
-                <SlidersHorizontal className="h-3.5 w-3.5 text-cyan-400" />
+                <SlidersHorizontal className="h-3.5 w-3.5 text-sky-600" />
                 Edit Prompt
               </button>
             )}
@@ -321,7 +321,7 @@ export function ResultPanel({
         </div>
 
         {reverifyMessage && (
-          <p className="mt-3 text-xs text-zinc-400 border-t border-zinc-800/80 pt-2">
+          <p className="mt-3 text-xs text-slate-600 font-medium border-t border-slate-200/80 pt-2">
             {reverifyMessage}
           </p>
         )}
@@ -329,30 +329,30 @@ export function ResultPanel({
 
       {/* Metadata & Diagnostics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5 space-y-1">
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <Clock className="h-4 w-4 text-zinc-400" /> Execution Time
+        <div className="rounded-xl border border-sky-200/80 bg-white/80 p-3.5 space-y-1 shadow-sm">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <Clock className="h-4 w-4 text-sky-600" /> Execution Time
           </div>
-          <p className="text-sm font-semibold text-white tabular-nums">
+          <p className="text-sm font-bold text-slate-900 tabular-nums">
             {result.execution_time_sec ?? result.timings?.execution_time_sec ?? 0}s
           </p>
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5 space-y-1">
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <Cpu className="h-4 w-4 text-zinc-400" /> Model / Mode
+        <div className="rounded-xl border border-sky-200/80 bg-white/80 p-3.5 space-y-1 shadow-sm">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <Cpu className="h-4 w-4 text-sky-600" /> Model / Mode
           </div>
-          <p className="text-sm font-semibold text-white">
+          <p className="text-sm font-bold text-slate-900">
             {result.model || "Configured Provider"}{" "}
-            <span className="text-xs text-zinc-400">({result.generation_mode || "standard"})</span>
+            <span className="text-xs text-slate-500 font-normal">({result.generation_mode || "standard"})</span>
           </p>
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5 space-y-1">
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <Layers className="h-4 w-4 text-zinc-400" /> Planned Sections
+        <div className="rounded-xl border border-sky-200/80 bg-white/80 p-3.5 space-y-1 shadow-sm">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <Layers className="h-4 w-4 text-sky-600" /> Planned Sections
           </div>
-          <p className="text-sm font-semibold text-white tabular-nums">
+          <p className="text-sm font-bold text-slate-900 tabular-nums">
             {result.plan_summary?.length ?? 0} entries
           </p>
         </div>
@@ -360,7 +360,7 @@ export function ResultPanel({
 
       {/* Preview availability */}
       {!previewAvailable && (
-        <p className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
+        <p className="rounded-xl border border-sky-200/80 bg-white/80 p-4 text-sm text-slate-700 shadow-sm font-medium">
           Inline preview is unavailable on this server. Download the artifact to review it in a
           compatible document or presentation app.
         </p>
@@ -368,35 +368,35 @@ export function ResultPanel({
 
       {/* Interactive Generated Content & Structure Inspector */}
       {(hasDetailedPreview || (result.plan_summary && result.plan_summary.length > 0)) && (
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2">
+        <section className="rounded-2xl border border-sky-200/80 bg-white/90 shadow-[0_4px_25px_rgba(186,230,253,0.3)] overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-sky-200/80 bg-sky-50/50 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
               {templateType === "pptx" ? (
-                <Presentation className="h-4 w-4 text-amber-400" />
+                <Presentation className="h-4 w-4 text-amber-600" />
               ) : (
-                <FileText className="h-4 w-4 text-cyan-400" />
+                <FileText className="h-4 w-4 text-sky-600" />
               )}
-              <h3 className="text-sm font-semibold text-white">
+              <h3 className="text-sm font-bold text-slate-900">
                 Generated {templateType === "pptx" ? "Presentation Slides" : "Document Structure"}
               </h3>
             </div>
             <div className="flex items-center gap-2.5">
-              <span className="text-xs text-zinc-400 font-mono tabular-nums hidden sm:inline">
+              <span className="text-xs text-slate-500 font-mono tabular-nums hidden sm:inline">
                 {result.output_filename}
               </span>
               <button
                 type="button"
                 onClick={handleCopyPreviewText}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 transition-colors shadow-sm"
               >
                 {copiedContent ? (
                   <>
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
                     Copied
                   </>
                 ) : (
                   <>
-                    <Copy className="h-3.5 w-3.5 text-zinc-400" />
+                    <Copy className="h-3.5 w-3.5 text-slate-400" />
                     Copy text
                   </>
                 )}
@@ -406,14 +406,14 @@ export function ResultPanel({
 
           {/* Interactive Section / Slide Filter Bar */}
           {(previewSections.length > 1 || previewSlides.length > 1) && (
-            <div className="px-5 py-2.5 bg-zinc-900/40 border-b border-zinc-800/80 flex items-center gap-1.5 overflow-x-auto">
+            <div className="px-5 py-2.5 bg-sky-50/60 border-b border-sky-200/70 flex items-center gap-1.5 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setActiveItemIndex("all")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
                   activeItemIndex === "all"
-                    ? "bg-indigo-600 text-white"
-                    : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "bg-white text-slate-600 hover:text-slate-900 border border-sky-200"
                 }`}
               >
                 All ({previewSections.length || previewSlides.length})
@@ -426,8 +426,8 @@ export function ResultPanel({
                   onClick={() => setActiveItemIndex(idx)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
                     activeItemIndex === idx
-                      ? "bg-indigo-600 text-white"
-                      : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
+                      ? "bg-sky-600 text-white font-bold shadow-sm"
+                      : "bg-white text-slate-600 hover:text-slate-900 border border-sky-200"
                   }`}
                 >
                   <span className="block max-w-[180px] truncate">
@@ -439,49 +439,49 @@ export function ResultPanel({
           )}
 
           {displayedSections.length > 0 ? (
-            <div className="divide-y divide-zinc-800/60 max-h-[440px] overflow-y-auto">
+            <div className="divide-y divide-sky-100 max-h-[440px] overflow-y-auto">
               {displayedSections.map((sec, idx) => (
                 <div key={idx} className="p-5 space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h4 className="text-sm font-bold text-zinc-100">{sec.title}</h4>
+                    <h4 className="text-sm font-bold text-slate-900">{sec.title}</h4>
                     {sec.heading_style && (
-                      <span className="text-[11px] font-mono text-zinc-400">
+                      <span className="text-[11px] font-mono text-slate-500">
                         Style: {sec.heading_style}
                       </span>
                     )}
                   </div>
                   {sec.paragraphs?.map((para, pIdx) => (
-                    <p key={pIdx} className="text-xs leading-relaxed text-zinc-300">
+                    <p key={pIdx} className="text-xs leading-relaxed text-slate-700">
                       {para}
                     </p>
                   ))}
                   {sec.bullets && sec.bullets.length > 0 && (
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-zinc-300">
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
                       {sec.bullets.map((b, bIdx) => (
                         <li key={bIdx}>{b}</li>
                       ))}
                     </ul>
                   )}
                   {sec.table_data && (
-                    <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-800">
+                    <div className="mt-3 overflow-x-auto rounded-xl border border-sky-200 shadow-sm">
                       {sec.table_data.title && (
-                        <div className="bg-zinc-900/80 px-3.5 py-2 text-[11px] font-semibold text-zinc-300 border-b border-zinc-800">
+                        <div className="bg-sky-100/70 px-3.5 py-2 text-[11px] font-bold text-slate-800 border-b border-sky-200">
                           {sec.table_data.title}
                         </div>
                       )}
-                      <table className="w-full text-left text-xs text-zinc-300">
-                        <thead className="bg-zinc-900/50 text-[11px] uppercase text-zinc-400 border-b border-zinc-800">
+                      <table className="w-full text-left text-xs text-slate-700">
+                        <thead className="bg-sky-50 text-[11px] uppercase text-slate-700 font-bold border-b border-sky-200">
                           <tr>
                             {sec.table_data.headers.map((h, hIdx) => (
-                              <th key={hIdx} className="px-3.5 py-2 font-semibold">
+                              <th key={hIdx} className="px-3.5 py-2 font-bold">
                                 {h}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-800/60 tabular-nums">
+                        <tbody className="divide-y divide-sky-100 tabular-nums">
                           {sec.table_data.rows.map((row, rIdx) => (
-                            <tr key={rIdx} className="hover:bg-zinc-900/30">
+                            <tr key={rIdx} className="hover:bg-sky-50/60">
                               {row.map((cell, cIdx) => (
                                 <td key={cIdx} className="px-3.5 py-2">
                                   {cell}
@@ -501,18 +501,18 @@ export function ResultPanel({
               {displayedSlides.map((slide, idx) => (
                 <div
                   key={idx}
-                  className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-2.5 flex flex-col justify-between"
+                  className="rounded-xl border border-sky-200/80 bg-white p-4 space-y-2.5 flex flex-col justify-between shadow-sm"
                 >
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
-                      <span className="font-mono font-semibold text-amber-400 tabular-nums">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
+                      <span className="font-mono font-bold text-amber-700 tabular-nums">
                         Slide {slide.slide_number ?? idx + 1}
                       </span>
                       {slide.layout_name && <span>Layout: {slide.layout_name}</span>}
                     </div>
-                    <h4 className="text-sm font-bold text-white">{slide.title}</h4>
+                    <h4 className="text-sm font-bold text-slate-900">{slide.title}</h4>
                     {slide.bullets && slide.bullets.length > 0 && (
-                      <ul className="list-disc pl-4 space-y-1 text-xs text-zinc-300">
+                      <ul className="list-disc pl-4 space-y-1 text-xs text-slate-700">
                         {slide.bullets.map((b, bIdx) => (
                           <li key={bIdx}>{b}</li>
                         ))}
@@ -520,7 +520,7 @@ export function ResultPanel({
                     )}
                   </div>
                   {slide.speaker_notes && (
-                    <p className="pt-2 border-t border-zinc-800/80 text-[11px] text-zinc-400">
+                    <p className="pt-2 border-t border-sky-100 text-[11px] text-slate-500 font-medium">
                       Notes: {slide.speaker_notes}
                     </p>
                   )}
@@ -532,12 +532,12 @@ export function ResultPanel({
               {result.plan_summary?.map((item, idx) => (
                 <div
                   key={idx}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-200"
+                  className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-slate-800 shadow-sm"
                 >
-                  <span className="font-mono text-zinc-400 mr-1.5 tabular-nums">{idx + 1}.</span>
-                  <span className="font-medium">{item.title}</span>
+                  <span className="font-mono text-slate-400 mr-1.5 tabular-nums">{idx + 1}.</span>
+                  <span className="font-semibold">{item.title}</span>
                   {item.layout && (
-                    <span className="ml-2 text-[11px] text-zinc-400">({item.layout})</span>
+                    <span className="ml-2 text-[11px] text-slate-500">({item.layout})</span>
                   )}
                 </div>
               ))}
@@ -547,34 +547,34 @@ export function ResultPanel({
       )}
 
       {/* Components Verification Table */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-white">Component Verification Results</h3>
-          <span className="text-xs text-zinc-400 font-mono tabular-nums">
+      <div className="rounded-2xl border border-sky-200/80 bg-white/90 shadow-[0_4px_25px_rgba(186,230,253,0.3)] overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-sky-200/80 bg-sky-50/50 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-slate-900">Component Verification Results</h3>
+          <span className="text-xs text-slate-500 font-mono tabular-nums">
             Original: {currentVal.original_style_hash?.slice(0, 16) || "N/A"} • Generated:{" "}
             {currentVal.generated_style_hash?.slice(0, 16) || "N/A"}
           </span>
         </div>
 
-        <div className="divide-y divide-zinc-800/60">
+        <div className="divide-y divide-sky-100">
           {components.map((comp, idx) => (
             <div key={idx} className="px-5 py-3 flex items-center justify-between text-xs">
-              <span className="font-medium text-zinc-200">{comp.name}</span>
+              <span className="font-semibold text-slate-800">{comp.name}</span>
               <div className="flex items-center gap-2.5">
-                <span className="text-zinc-400">{comp.detail}</span>
+                <span className="text-slate-500 font-medium">{comp.detail}</span>
                 {comp.status === "identical" && (
-                  <span className="inline-flex items-center gap-1 rounded bg-emerald-950/60 px-2 py-0.5 text-[11px] text-emerald-400 border border-emerald-500/30">
-                    <CheckCircle2 className="h-3 w-3" /> Identical
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-300 shadow-sm">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Identical
                   </span>
                 )}
                 {comp.status === "intentional_override" && (
-                  <span className="inline-flex items-center gap-1 rounded bg-indigo-950/60 px-2 py-0.5 text-[11px] text-indigo-400 border border-indigo-500/30">
+                  <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 border border-sky-300 shadow-sm">
                     Override
                   </span>
                 )}
                 {comp.status === "changed" && (
-                  <span className="inline-flex items-center gap-1 rounded bg-red-950/60 px-2 py-0.5 text-[11px] text-red-400 border border-red-500/30">
-                    <AlertCircle className="h-3 w-3" /> Changed
+                  <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 border border-rose-300 shadow-sm">
+                    <AlertCircle className="h-3 w-3 text-rose-600" /> Changed
                   </span>
                 )}
               </div>
@@ -585,9 +585,9 @@ export function ResultPanel({
 
       {/* Issues list if any */}
       {currentVal.issues && currentVal.issues.length > 0 && (
-        <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-5 space-y-2 text-xs text-red-200">
-          <div className="flex items-center gap-2 font-medium text-red-400">
-            <AlertCircle className="h-4 w-4" /> Detected Invariant Issues ({currentVal.issues.length})
+        <div className="rounded-2xl border border-rose-300 bg-rose-50 p-5 space-y-2 text-xs text-rose-900 shadow-sm">
+          <div className="flex items-center gap-2 font-bold text-rose-800">
+            <AlertCircle className="h-4 w-4 text-rose-600" /> Detected Invariant Issues ({currentVal.issues.length})
           </div>
           <ul className="list-disc pl-5 space-y-1">
             {currentVal.issues.map((issue, idx) => (
@@ -599,8 +599,8 @@ export function ResultPanel({
 
       {/* Research sources if any */}
       {result.research_sources && result.research_sources.length > 0 && (
-        <section className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-5 space-y-3 text-xs text-cyan-100">
-          <h3 className="font-semibold text-cyan-300">Research sources</h3>
+        <section className="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 space-y-3 text-xs text-slate-800 shadow-sm">
+          <h3 className="font-bold text-sky-900">Research sources</h3>
           <ol className="list-decimal space-y-2 pl-5">
             {result.research_sources.map((source) => (
               <li key={source.id} className="pl-1">
@@ -608,18 +608,18 @@ export function ResultPanel({
                   href={source.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-medium text-cyan-200 underline decoration-cyan-500/50 underline-offset-2 hover:text-white"
+                  className="font-semibold text-sky-700 underline decoration-sky-400 underline-offset-2 hover:text-sky-950"
                 >
                   {source.title}
                 </a>
                 {source.published_date && (
-                  <span className="ml-1 text-zinc-400 tabular-nums">({source.published_date})</span>
+                  <span className="ml-1 text-slate-500 tabular-nums font-normal">({source.published_date})</span>
                 )}
-                <div className="break-all text-[10px] text-zinc-400">{source.url}</div>
+                <div className="break-all text-[10px] text-slate-400">{source.url}</div>
               </li>
             ))}
           </ol>
-          <p className="text-[11px] text-zinc-400">
+          <p className="text-[11px] text-slate-500 font-medium">
             Sources were retrieved for this document and were not independently verified.
           </p>
         </section>
@@ -627,9 +627,9 @@ export function ResultPanel({
 
       {/* Warnings if any */}
       {result.warnings && result.warnings.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-5 space-y-2 text-xs text-amber-200">
-          <div className="flex items-center gap-2 font-medium text-amber-400">
-            <AlertTriangle className="h-4 w-4" /> Warnings
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 space-y-2 text-xs text-amber-900 shadow-sm">
+          <div className="flex items-center gap-2 font-bold text-amber-800">
+            <AlertTriangle className="h-4 w-4 text-amber-600" /> Warnings
           </div>
           <ul className="list-disc pl-5 space-y-1">
             {result.warnings.map((w, idx) => (
@@ -644,14 +644,14 @@ export function ResultPanel({
           <button
             type="button"
             onClick={onEditPrompt}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
+            className="rounded-xl border border-sky-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 transition-colors shadow-sm"
           >
             Edit Prompt & Regenerate
           </button>
         )}
         <button
           onClick={onReset}
-          className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+          className="rounded-xl border border-sky-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 transition-colors shadow-sm"
         >
           Create Another Document
         </button>

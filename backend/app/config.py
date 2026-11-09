@@ -31,10 +31,10 @@ class Settings(BaseSettings):
     MAX_TOKENS: int = Field(default=8192, ge=128, le=65536)  # Legacy shim until Phase 2.
     OUTLINE_MAX_TOKENS: int = Field(default=1200, ge=128, le=16384)
     SECTION_MAX_TOKENS: int = Field(default=1800, ge=128, le=16384)
-    LLM_TIMEOUT_SEC: int = Field(default=90, ge=1, le=600)
+    LLM_TIMEOUT_SEC: int = Field(default=180, ge=1, le=1200)
     LLM_MAX_RETRIES: int = Field(default=3, ge=0, le=10)
-    LLM_MAX_CONCURRENCY: int = Field(default=3, ge=1, le=32)
-    GENERATION_DEADLINE_SEC: int = Field(default=300, ge=1, le=1800)
+    LLM_MAX_CONCURRENCY: int = Field(default=2, ge=1, le=32)
+    GENERATION_DEADLINE_SEC: int = Field(default=900, ge=1, le=3600)
     LLM_CIRCUIT_BREAKER_THRESHOLD: int = Field(default=5, ge=1, le=100)
     LLM_CIRCUIT_BREAKER_RESET_SEC: int = Field(default=30, ge=1, le=600)
     LLM_THINKING: Literal["off", "default"] = "default"

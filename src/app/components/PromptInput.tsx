@@ -50,7 +50,7 @@ export function PromptInput({
   const [overrideTarget, setOverrideTarget] = useState<
     "none" | "table_border" | "page_border" | "heading_color"
   >("none");
-  const [overrideColor, setOverrideColor] = useState("#2563EB");
+  const [overrideColor, setOverrideColor] = useState("#0284c7");
   const [enabledRuleIndexes, setEnabledRuleIndexes] = useState<number[]>(() =>
     (extractedRules || []).slice(0, 12).map((_, index) => index),
   );
@@ -109,7 +109,6 @@ export function PromptInput({
       }
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      // Seamless local enhancement fallback: never display a scary failure banner
       const clean = prompt.trim();
       const fallback =
         documentType === "pptx"
@@ -186,36 +185,36 @@ export function PromptInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-2xl border border-white/10 bg-zinc-950/80 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl space-y-5 transition-all duration-300"
+      className="rounded-2xl border border-sky-200/80 bg-white/90 p-5 sm:p-6 shadow-[0_8px_30px_rgba(186,230,253,0.35)] backdrop-blur-2xl space-y-5 transition-all duration-300"
     >
       {/* Step Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sky-200/70 pb-4">
         <div>
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-indigo-400" />
+          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-sky-600" />
             {documentType === "pptx" ? "Configure Presentation" : "Configure Document"}
           </h3>
-          <p className="text-xs text-zinc-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">
             Describe what you need. All fonts, colors, and layout rules from your template will be applied automatically.
           </p>
         </div>
 
         {enhanceSuccess && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 px-3 py-1 text-xs font-medium text-emerald-300 animate-fadeIn">
-            <CheckCircle className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700 animate-fadeIn shadow-sm">
+            <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
             ✨ Prompt enhanced with structure!
           </span>
         )}
       </div>
 
       {enhanceError && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-300 flex items-center justify-between">
-          <span>{enhanceError}</span>
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 flex items-center justify-between shadow-sm">
+          <span className="font-medium">{enhanceError}</span>
           <button
             type="button"
             aria-label="Dismiss enhancement notice"
             onClick={() => setEnhanceError(null)}
-            className="text-amber-400 hover:text-amber-200 px-1 font-bold"
+            className="text-amber-700 hover:text-amber-950 px-1 font-bold"
           >
             ✕
           </button>
@@ -225,11 +224,11 @@ export function PromptInput({
       {/* Main Interactive Prompt Area */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label htmlFor="document-prompt" className="text-xs font-semibold text-zinc-200">
+          <label htmlFor="document-prompt" className="text-xs font-bold text-slate-800">
             Document prompt
           </label>
-          <span className="text-[11px] text-zinc-400 hidden sm:inline">
-            Press <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-300 font-mono text-[10px]">Ctrl+Enter</kbd> to generate
+          <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+            Press <kbd className="px-1.5 py-0.5 bg-sky-100 border border-sky-200 rounded text-sky-800 font-mono text-[10px]">Ctrl+Enter</kbd> to generate
           </span>
         </div>
 
@@ -245,7 +244,7 @@ export function PromptInput({
                 ? "e.g., 'Create a 5-slide presentation on digital transformation strategy and cloud adoption with comparison charts'..."
                 : "e.g., 'Write a comprehensive business report on renewable energy integration with executive summary and benchmark tables'..."
             }
-            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.03] p-4 pr-32 text-sm text-white placeholder-zinc-500 transition-all duration-300 focus:border-violet-500/70 focus:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:shadow-[0_0_20px_rgba(139,92,246,0.15)]"
+            className="w-full resize-none rounded-xl border border-sky-200/90 bg-white p-4 pr-32 text-sm text-slate-900 placeholder-slate-400 transition-all duration-300 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:shadow-[0_0_20px_rgba(14,165,233,0.2)]"
             required
           />
 
@@ -256,7 +255,7 @@ export function PromptInput({
                 onClick={() => setPrompt("")}
                 title="Clear prompt"
                 aria-label="Clear prompt"
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/90 text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -265,7 +264,7 @@ export function PromptInput({
               type="button"
               onClick={handleEnhancePrompt}
               disabled={!prompt.trim() || isEnhancing}
-              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_14px_rgba(139,92,246,0.3)] hover:shadow-[0_0_20px_rgba(139,92,246,0.5)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:transform-none disabled:shadow-none transition-all duration-200 whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-600 via-sky-500 to-cyan-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_14px_rgba(14,165,233,0.3)] hover:shadow-[0_0_20px_rgba(14,165,233,0.5)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:transform-none disabled:shadow-none transition-all duration-200 whitespace-nowrap shrink-0"
             >
               {isEnhancing ? (
                 <>
@@ -284,13 +283,13 @@ export function PromptInput({
 
         {/* 1-Click Starter Suggestions */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="text-[11px] font-medium text-zinc-400">Quick ideas:</span>
+          <span className="text-[11px] font-semibold text-slate-500">Quick ideas:</span>
           {samplePrompts.map((p, idx) => (
             <button
               key={idx}
               type="button"
               onClick={() => setPrompt(p)}
-              className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 text-left text-xs text-zinc-300 hover:border-indigo-500/50 hover:bg-zinc-800 hover:text-white transition-all truncate max-w-xs"
+              className="rounded-lg border border-sky-200 bg-sky-50/70 px-2.5 py-1 text-left text-xs font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-100 hover:text-sky-950 transition-all truncate max-w-xs shadow-sm"
             >
               {p}
             </button>
@@ -302,10 +301,10 @@ export function PromptInput({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Document / Presentation Length */}
         {documentType === "pptx" ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col justify-between">
+          <div className="rounded-xl border border-sky-200/80 bg-white/75 p-4 flex flex-col justify-between shadow-sm">
             <div>
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor="target-slides" className="text-xs font-semibold text-zinc-200">
+                <label htmlFor="target-slides" className="text-xs font-bold text-slate-800">
                   Target slide count
                 </label>
                 <div className="flex items-center gap-1">
@@ -314,10 +313,10 @@ export function PromptInput({
                       key={presetCount}
                       type="button"
                       onClick={() => setTargetSlides(presetCount)}
-                      className={`rounded px-2.5 py-0.5 text-xs font-medium tabular-nums transition-colors ${
+                      className={`rounded px-2.5 py-0.5 text-xs font-semibold tabular-nums transition-colors ${
                         Number(targetSlides) === presetCount
-                          ? "bg-indigo-600 text-white font-bold"
-                          : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                          ? "bg-sky-600 text-white font-bold shadow-sm"
+                          : "bg-sky-50 text-slate-700 border border-sky-200 hover:bg-sky-100"
                       }`}
                     >
                       {presetCount} slides
@@ -334,18 +333,18 @@ export function PromptInput({
                 onChange={(e) =>
                   setTargetSlides(e.target.value === "" ? "" : parseInt(e.target.value, 10) || 1)
                 }
-                className="mt-2.5 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white tabular-nums focus:border-indigo-400 focus:outline-none"
+                className="mt-2.5 w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 tabular-nums focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400"
               />
             </div>
-            <p className="mt-2 text-[11px] text-zinc-400">
+            <p className="mt-2 text-[11px] text-slate-500 font-medium">
               Slides automatically inherit slide master styles and typography.
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+          <div className="rounded-xl border border-sky-200/80 bg-white/75 p-4 space-y-3 shadow-sm">
             <fieldset>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <legend className="text-xs font-semibold text-zinc-200">Document length</legend>
+                <legend className="text-xs font-bold text-slate-800">Document length</legend>
                 <div className="flex gap-1">
                   {(["detail", "pages"] as const).map((choice) => (
                     <button
@@ -355,8 +354,8 @@ export function PromptInput({
                       onClick={() => setLengthMode(choice)}
                       className={
                         lengthMode === choice
-                          ? "rounded-md border border-indigo-500/50 bg-indigo-600/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-200"
-                          : "rounded-md border border-zinc-700 bg-zinc-800/80 px-2 py-0.5 text-[11px] font-medium text-zinc-400 hover:text-white"
+                          ? "rounded-md border border-sky-400 bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-900 shadow-sm"
+                          : "rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900"
                       }
                     >
                       {choice === "pages" ? "Choose pages" : "Choose detail"}
@@ -367,7 +366,7 @@ export function PromptInput({
 
               {lengthMode === "pages" ? (
                 <div className="mt-2.5">
-                  <label htmlFor="target-pages" className="block text-xs text-zinc-300">
+                  <label htmlFor="target-pages" className="block text-xs font-semibold text-slate-700">
                     Approximate page count (1–50)
                   </label>
                   <input
@@ -381,9 +380,9 @@ export function PromptInput({
                         e.target.value === "" ? "" : parseInt(e.target.value, 10) || 1,
                       )
                     }
-                    className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white tabular-nums focus:border-indigo-400 focus:outline-none"
+                    className="mt-1.5 w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 tabular-nums focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400"
                   />
-                  <p className="mt-1.5 text-[11px] text-zinc-400">
+                  <p className="mt-1.5 text-[11px] text-slate-500 font-medium">
                     Approximate content length; pagination adapts to your template fonts and margins.
                   </p>
                 </div>
@@ -405,18 +404,18 @@ export function PromptInput({
                         onClick={() => setDetailLevel(value)}
                         className={
                           detailLevel === value
-                            ? "rounded-xl border border-violet-500 bg-violet-950/50 p-2.5 text-left text-white shadow-[0_0_16px_rgba(139,92,246,0.25)] scale-[1.01] transition-all duration-200"
-                            : "rounded-xl border border-white/10 bg-white/[0.02] p-2.5 text-left text-zinc-300 hover:border-violet-500/40 hover:text-white hover:bg-white/[0.05] hover:scale-[1.005] transition-all duration-200"
+                            ? "rounded-xl border-2 border-sky-500 bg-sky-50/90 p-2.5 text-left text-sky-950 shadow-[0_0_16px_rgba(14,165,233,0.2)] scale-[1.01] transition-all duration-200 font-bold"
+                            : "rounded-xl border border-sky-200/80 bg-white/80 p-2.5 text-left text-slate-700 hover:border-sky-300 hover:bg-sky-50/40 hover:scale-[1.005] transition-all duration-200"
                         }
                       >
                         <span className="block text-xs font-bold">{label}</span>
-                        <span className="mt-0.5 block text-[11px] text-zinc-400 tabular-nums">
+                        <span className="mt-0.5 block text-[11px] text-slate-500 font-medium tabular-nums">
                           {estimate}
                         </span>
                       </button>
                     ))}
                   </div>
-                  <p className="mt-2 text-[11px] text-zinc-400">
+                  <p className="mt-2 text-[11px] text-slate-500 font-medium">
                     Target length estimate; preserves all original template spacing.
                   </p>
                 </div>
@@ -426,18 +425,18 @@ export function PromptInput({
         )}
 
         {/* Visuals & Figures */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col justify-between">
+        <div className="rounded-xl border border-sky-200/80 bg-white/75 p-4 flex flex-col justify-between shadow-sm">
           <fieldset>
-            <legend className="text-xs font-semibold text-zinc-200">Figures and images</legend>
-            <p className="mt-1 text-[11px] text-zinc-400">
+            <legend className="text-xs font-bold text-slate-800">Figures and images</legend>
+            <p className="mt-1 text-[11px] text-slate-500 font-medium">
               Include contextual illustrations or generate pure text and tables.
             </p>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs">
               <label
                 className={
                   imageSearchAvailable === false
-                    ? "flex items-center gap-2 text-zinc-500"
-                    : "flex items-center gap-2 text-zinc-200 cursor-pointer"
+                    ? "flex items-center gap-2 text-slate-400"
+                    : "flex items-center gap-2 text-slate-800 font-medium cursor-pointer"
                 }
               >
                 <input
@@ -446,28 +445,28 @@ export function PromptInput({
                   checked={imageMode === "search"}
                   disabled={imageSearchAvailable === false}
                   onChange={() => setImageMode("search")}
-                  className="accent-indigo-500"
+                  className="accent-sky-600"
                 />
                 Include images
               </label>
-              <label className="flex items-center gap-2 text-zinc-200 cursor-pointer">
+              <label className="flex items-center gap-2 text-slate-800 font-medium cursor-pointer">
                 <input
                   type="radio"
                   name="image-mode"
                   checked={imageMode === "off"}
                   onChange={() => setImageMode("off")}
-                  className="accent-indigo-500"
+                  className="accent-sky-600"
                 />
                 No images
               </label>
               {placeholdersAvailable !== false && (
-                <label className="flex items-center gap-2 text-zinc-200 cursor-pointer">
+                <label className="flex items-center gap-2 text-slate-800 font-medium cursor-pointer">
                   <input
                     type="radio"
                     name="image-mode"
                     checked={imageMode === "placeholder"}
                     onChange={() => setImageMode("placeholder")}
-                    className="accent-indigo-500"
+                    className="accent-sky-600"
                   />
                   Neutral placeholders
                 </label>
@@ -476,12 +475,12 @@ export function PromptInput({
           </fieldset>
 
           {documentType !== "pptx" && mode.startsWith("create") && (
-            <div className="border-t border-zinc-800/80 pt-2.5 mt-3">
+            <div className="border-t border-sky-200/70 pt-2.5 mt-3">
               <label
                 className={
                   researchAvailable
-                    ? "flex cursor-pointer items-start gap-2 text-xs text-zinc-200"
-                    : "flex cursor-not-allowed items-start gap-2 text-xs text-zinc-500"
+                    ? "flex cursor-pointer items-start gap-2 text-xs text-slate-800"
+                    : "flex cursor-not-allowed items-start gap-2 text-xs text-slate-400"
                 }
               >
                 <input
@@ -489,11 +488,11 @@ export function PromptInput({
                   checked={researchEnabled}
                   disabled={!researchAvailable}
                   onChange={(e) => setResearchEnabled(e.target.checked)}
-                  className="mt-0.5 rounded border-zinc-700 bg-zinc-800 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                  className="mt-0.5 rounded border-sky-300 bg-white text-sky-600 focus:ring-sky-500 disabled:opacity-50"
                 />
                 <span>
-                  <span className="font-semibold">Research sources</span>
-                  <span className="mt-0.5 block text-[11px] text-zinc-400">
+                  <span className="font-bold">Research sources</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500 font-medium">
                     {researchAvailable
                       ? "Optional web search citations; results are not independently verified."
                       : researchCapabilityKnown
@@ -509,11 +508,11 @@ export function PromptInput({
 
       {/* Detected Template Rules (Shown neatly when template contains extracted rules) */}
       {visibleRules.length > 0 && (
-        <fieldset className="rounded-xl border border-indigo-500/20 bg-indigo-950/10 p-3.5 text-xs">
+        <fieldset className="rounded-xl border border-sky-200 bg-sky-50/60 p-3.5 text-xs shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div>
-              <legend className="font-semibold text-indigo-300">Detected template rules</legend>
-              <p className="text-[11px] text-zinc-400">Rules extracted from your template to guide AI structure</p>
+              <legend className="font-bold text-sky-900">Detected template rules</legend>
+              <p className="text-[11px] text-slate-500 font-medium">Rules extracted from your template to guide AI structure</p>
             </div>
             <button
               type="button"
@@ -522,7 +521,7 @@ export function PromptInput({
                   allRulesSelected ? [] : visibleRules.map((_, index) => index),
                 )
               }
-              className="text-[11px] font-semibold text-indigo-400 hover:text-white underline underline-offset-2"
+              className="text-[11px] font-bold text-sky-600 hover:text-sky-800 underline underline-offset-2"
             >
               {allRulesSelected ? "Deselect all" : "Select all"} ({enabledRuleIndexes.length}/{visibleRules.length})
             </button>
@@ -531,7 +530,7 @@ export function PromptInput({
             {visibleRules.map((rule, index) => (
               <label
                 key={`${index}-${rule}`}
-                className="flex items-start gap-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-2 text-zinc-200 cursor-pointer hover:border-indigo-500/40 transition-colors"
+                className="flex items-start gap-2 rounded-lg border border-sky-200/80 bg-white/90 p-2 text-slate-800 cursor-pointer hover:border-sky-400 hover:bg-sky-50/80 transition-colors shadow-sm"
               >
                 <input
                   type="checkbox"
@@ -543,9 +542,9 @@ export function PromptInput({
                         : current.filter((item) => item !== index),
                     )
                   }
-                  className="mt-0.5 accent-indigo-500"
+                  className="mt-0.5 accent-sky-600"
                 />
-                <span className="leading-snug text-xs">{rule}</span>
+                <span className="leading-snug text-xs font-medium">{rule}</span>
               </label>
             ))}
           </div>
@@ -553,11 +552,11 @@ export function PromptInput({
       )}
 
       {/* Advanced Settings (Collapsed by default so regular users are not overwhelmed) */}
-      <div className="border-t border-zinc-800/80 pt-2">
+      <div className="border-t border-sky-200/70 pt-2">
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 py-1"
+          className="text-xs font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1.5 py-1"
         >
           {showAdvanced ? (
             <>
@@ -573,14 +572,14 @@ export function PromptInput({
         </button>
 
         {showAdvanced && (
-          <div className="mt-3 space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+          <div className="mt-3 space-y-4 rounded-xl border border-sky-200 bg-sky-50/40 p-4 shadow-sm">
             {/* Mode Selector */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sky-200/60 pb-3">
               <div>
-                <span className="text-xs font-semibold text-zinc-200">Execution Mode</span>
-                <p className="text-[11px] text-zinc-400">Choose full generation or surgical modification</p>
+                <span className="text-xs font-bold text-slate-800">Execution Mode</span>
+                <p className="text-[11px] text-slate-500 font-medium">Choose full generation or surgical modification</p>
               </div>
-              <div className="flex rounded-lg bg-zinc-950 border border-zinc-800 p-1">
+              <div className="flex rounded-lg bg-white border border-sky-200 p-1 shadow-sm">
                 <button
                   type="button"
                   onClick={() =>
@@ -588,8 +587,8 @@ export function PromptInput({
                   }
                   className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
                     mode.startsWith("create")
-                      ? "bg-indigo-600 text-white font-bold"
-                      : "text-zinc-400 hover:text-white"
+                      ? "bg-sky-600 text-white font-bold shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
@@ -602,8 +601,8 @@ export function PromptInput({
                   }
                   className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
                     mode.startsWith("edit")
-                      ? "bg-indigo-600 text-white font-bold"
-                      : "text-zinc-400 hover:text-white"
+                      ? "bg-sky-600 text-white font-bold shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   <Sliders className="h-3.5 w-3.5" />
@@ -614,27 +613,27 @@ export function PromptInput({
 
             {/* Surgical Edit Outline & Action Picker */}
             {mode === "edit_document" && documentOutline && documentOutline.length > 0 && (
-              <fieldset className="grid gap-3 rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 text-xs sm:grid-cols-2">
-                <legend className="px-1 font-semibold text-indigo-200">Edit the template</legend>
-                <label className="grid gap-1 text-zinc-200">
+              <fieldset className="grid gap-3 rounded-xl border border-sky-300 bg-white/90 p-3.5 text-xs sm:grid-cols-2 shadow-sm">
+                <legend className="px-1 font-bold text-sky-900">Edit the template</legend>
+                <label className="grid gap-1 text-slate-800 font-medium">
                   Edit action
                   <select
                     value={editAction}
                     onChange={(event) => setEditAction(event.target.value as typeof editAction)}
-                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-zinc-100"
+                    className="rounded-lg border border-sky-200 bg-white px-2.5 py-2 text-slate-900"
                   >
                     <option value="append">Append a section</option>
                     <option value="insert_after">Insert after a heading</option>
                   </select>
                 </label>
                 {editAction !== "append" && (
-                  <label className="grid gap-1 text-zinc-200">
+                  <label className="grid gap-1 text-slate-800 font-medium">
                     Target heading
                     <select
                       value={editTargetIndex}
                       onChange={(event) => setEditTargetIndex(event.target.value)}
                       required
-                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-zinc-100"
+                      className="rounded-lg border border-sky-200 bg-white px-2.5 py-2 text-slate-900"
                     >
                       <option value="">Choose a heading</option>
                       {documentOutline.map((heading, index) => (
@@ -651,14 +650,14 @@ export function PromptInput({
             {/* Document Template Mode */}
             {documentType === "docx" && mode.startsWith("create") && (
               <div>
-                <label htmlFor="template-mode" className="block text-xs font-semibold text-zinc-200">
+                <label htmlFor="template-mode" className="block text-xs font-bold text-slate-800">
                   How to use the document template
                 </label>
                 <select
                   id="template-mode"
                   value={templateMode}
                   onChange={(event) => setTemplateMode(event.target.value as typeof templateMode)}
-                  className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-white"
+                  className="mt-1.5 w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm"
                 >
                   <option value="auto">Choose automatically (recommended)</option>
                   <option value="fill">Fill detected placeholders</option>
@@ -670,7 +669,7 @@ export function PromptInput({
             {/* Audience Instructions & Color Overrides */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold text-zinc-300">
+                <label className="block text-xs font-bold text-slate-800">
                   Target audience / Special focus
                 </label>
                 <input
@@ -678,20 +677,20 @@ export function PromptInput({
                   value={customInstructions}
                   onChange={(e) => setCustomInstructions(e.target.value)}
                   placeholder="Target audience: engineering leads or executive summary"
-                  className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-white focus:border-indigo-400 focus:outline-none"
+                  className="mt-1.5 w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400 shadow-sm"
                 />
               </div>
 
               {documentType !== "pptx" && (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="grid gap-1 text-xs font-semibold text-zinc-300">
+                  <label className="grid gap-1 text-xs font-bold text-slate-800">
                     Formatting override
                     <select
                       value={overrideTarget}
                       onChange={(event) =>
                         setOverrideTarget(event.target.value as typeof overrideTarget)
                       }
-                      className="rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-2 text-xs text-white"
+                      className="rounded-lg border border-sky-200 bg-white px-2.5 py-2 text-xs text-slate-900 shadow-sm"
                     >
                       <option value="none">No override</option>
                       <option value="table_border">Table border color</option>
@@ -700,13 +699,13 @@ export function PromptInput({
                     </select>
                   </label>
                   {overrideTarget !== "none" && (
-                    <label className="grid gap-1 text-xs font-semibold text-zinc-300">
+                    <label className="grid gap-1 text-xs font-bold text-slate-800">
                       Override color
                       <input
                         type="color"
                         value={overrideColor}
                         onChange={(event) => setOverrideColor(event.target.value)}
-                        className="h-9 w-full rounded border border-zinc-700 bg-zinc-800 cursor-pointer"
+                        className="h-9 w-full rounded border border-sky-200 bg-white cursor-pointer"
                       />
                     </label>
                   )}
@@ -718,15 +717,15 @@ export function PromptInput({
       </div>
 
       {/* Action Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-zinc-800/80 pt-4">
-        <div className="text-[11px] text-zinc-400">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-sky-200/70 pt-4">
+        <div className="text-[11px] text-slate-500 font-medium">
           DocGuru compares selected typography, layout, and page dimensions with the uploaded template.
         </div>
 
         <button
           type="submit"
           disabled={!prompt.trim() || isGenerating}
-          className={`flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 px-6 py-3 text-xs font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.35)] hover:shadow-[0_0_28px_rgba(236,72,153,0.5)] hover:scale-[1.015] active:scale-[0.985] focus:outline-none focus:ring-4 focus:ring-violet-500/30 transition-all duration-300 whitespace-nowrap shrink-0 ${
+          className={`flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 via-sky-500 to-cyan-500 px-6 py-3 text-xs font-bold text-white shadow-[0_0_20px_rgba(14,165,233,0.35)] hover:shadow-[0_0_28px_rgba(14,165,233,0.55)] hover:scale-[1.015] active:scale-[0.985] focus:outline-none focus:ring-4 focus:ring-sky-400/30 transition-all duration-300 whitespace-nowrap shrink-0 ${
             !prompt.trim() || isGenerating ? "pointer-events-none opacity-50 shadow-none transform-none" : ""
           }`}
         >

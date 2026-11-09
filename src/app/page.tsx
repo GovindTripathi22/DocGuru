@@ -168,29 +168,29 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090A10] font-sans antialiased text-[#F8FAFC] flex flex-col relative overflow-hidden selection:bg-purple-500/30">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-sky-100/50 to-white font-sans antialiased text-slate-900 flex flex-col relative overflow-hidden selection:bg-sky-500/20">
       {/* Stitch MCP Ambient Luminescent Glows */}
-      <div className="ambient-glow-violet -top-40 -left-40" aria-hidden="true" />
-      <div className="ambient-glow-pink top-1/3 -right-40" aria-hidden="true" />
+      <div className="ambient-sky-glow -top-40 -left-40" aria-hidden="true" />
+      <div className="ambient-cyan-glow top-1/3 -right-40" aria-hidden="true" />
       <Header onHealthUpdate={setHealthData} />
       <ModeBanner mode={healthData?.mode} provider={healthData?.model_provider} />
 
       <main className="mx-auto flex-1 w-full max-w-6xl px-6 py-5 relative z-10">
         {/* Hero Section — compact once a template is loaded so the workspace stays front and center */}
         {currentStep === 1 ? (
-          <div className="mb-5 rounded-2xl bg-zinc-950 p-6 text-white border border-zinc-800 relative overflow-hidden">
+          <div className="mb-5 rounded-3xl bg-white/80 p-6 sm:p-7 text-slate-900 border border-sky-200/80 shadow-[0_8px_30px_rgba(186,230,253,0.35)] backdrop-blur-xl relative overflow-hidden">
             <div className="max-w-3xl relative z-10 space-y-2">
-              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-300">
-                <Shield className="h-3.5 w-3.5 text-indigo-400" />
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 bg-sky-100/80 border border-sky-200 px-3 py-1 rounded-full">
+                <Shield className="h-3.5 w-3.5 text-sky-600" />
                 <span>Template-aware document generation</span>
               </div>
               <h2
                 style={{ textWrap: "balance" }}
-                className="text-2xl sm:text-3xl font-bold tracking-tight text-white"
+                className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900"
               >
                 Generate new content while preserving template design.
               </h2>
-              <p className="text-sm leading-relaxed text-zinc-400">
+              <p className="text-sm leading-relaxed text-slate-600">
                 Upload a DOCX or PPTX template, or a PDF reference, and describe what you need.
                 DocGuru generates content using the selected template and compares supported style
                 and layout properties after generation. PDF output uses an approximate layout
@@ -199,14 +199,14 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-2.5">
-            <div className="flex items-center gap-2 text-xs text-zinc-300">
-              <Shield className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
-              <h2 className="font-semibold text-white">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-2.5 shadow-[0_2px_12px_rgba(186,230,253,0.25)]">
+            <div className="flex items-center gap-2 text-xs text-slate-700">
+              <Shield className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+              <h2 className="font-semibold text-slate-900">
                 Generate new content while preserving template design.
               </h2>
             </div>
-            <span className="text-[11px] text-zinc-400 hidden sm:inline">
+            <span className="text-[11px] text-slate-500 hidden sm:inline">
               Click any completed step below to go back and adjust settings
             </span>
           </div>
@@ -242,15 +242,15 @@ export default function Home() {
                   onClick={() => handleStepClick(item.step)}
                   className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-left text-xs transition-all ${
                     isActive
-                      ? "border-violet-500/80 bg-violet-950/30 text-white shadow-[0_0_20px_rgba(139,92,246,0.25)] scale-[1.01]"
+                      ? "border-sky-500 bg-sky-500/10 text-sky-950 font-bold shadow-[0_0_15px_rgba(14,165,233,0.2)] scale-[1.01]"
                       : isCompleted
-                      ? "cursor-pointer border-emerald-500/35 bg-emerald-950/20 text-zinc-200 hover:border-emerald-400/60 hover:bg-emerald-950/30 hover:scale-[1.005]"
-                      : "cursor-default border-white/5 bg-white/[0.02] text-zinc-500"
+                      ? "cursor-pointer border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100/70 hover:scale-[1.005]"
+                      : "cursor-default border-sky-100/80 bg-white/60 text-slate-400"
                   }`}
                 >
                   <div>
                     <div className="font-semibold">{item.title}</div>
-                    <div className="text-[11px] text-zinc-400 mt-0.5">{item.desc}</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">{item.desc}</div>
                   </div>
                   {isCompleted && (
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
@@ -268,14 +268,14 @@ export default function Home() {
           <div
             role="alert"
             aria-live="assertive"
-            className="mb-5 rounded-2xl border border-red-500/40 bg-red-950/40 p-4 text-sm text-red-300 flex items-center justify-between"
+            className="mb-5 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-800 flex items-center justify-between shadow-sm"
           >
             <div>
               <strong>Error:</strong> {error}
             </div>
             <button
               onClick={() => setError(null)}
-              className="text-xs bg-red-900/60 px-2.5 py-1 rounded text-red-200 hover:bg-red-900 whitespace-nowrap shrink-0"
+              className="text-xs bg-rose-200 px-2.5 py-1 rounded text-rose-800 hover:bg-rose-300 whitespace-nowrap shrink-0 font-medium"
             >
               Dismiss
             </button>
@@ -286,8 +286,8 @@ export default function Home() {
         {restoredSession && !templateData && (
           <div className="space-y-4 animate-fade-in-up">
             <div className="text-center">
-              <h3 className="text-base font-semibold text-white">Select Base Template</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <h3 className="text-base font-bold text-slate-900">Select Base Template</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
                 Upload a DOCX or PPTX template, or a PDF reference, to analyze its available
                 properties
               </p>
@@ -358,7 +358,7 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="border-t border-zinc-800/80 py-5 text-center text-xs text-zinc-400">
+      <footer className="border-t border-sky-200/60 py-5 text-center text-xs text-slate-500 relative z-10">
         DocGuru • Template-aware document generation
       </footer>
     </div>
