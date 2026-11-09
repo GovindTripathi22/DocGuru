@@ -186,7 +186,7 @@ export function PromptInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-2xl border border-zinc-800 bg-zinc-950/95 p-5 sm:p-6 shadow-2xl backdrop-blur-xl space-y-5"
+      className="rounded-2xl border border-white/10 bg-zinc-950/80 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl space-y-5 transition-all duration-300"
     >
       {/* Step Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
@@ -245,7 +245,7 @@ export function PromptInput({
                 ? "e.g., 'Create a 5-slide presentation on digital transformation strategy and cloud adoption with comparison charts'..."
                 : "e.g., 'Write a comprehensive business report on renewable energy integration with executive summary and benchmark tables'..."
             }
-            className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900/90 p-4 pr-32 text-sm text-white placeholder-zinc-500 transition-all focus:border-indigo-500 focus:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.03] p-4 pr-32 text-sm text-white placeholder-zinc-500 transition-all duration-300 focus:border-violet-500/70 focus:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:shadow-[0_0_20px_rgba(139,92,246,0.15)]"
             required
           />
 
@@ -265,7 +265,7 @@ export function PromptInput({
               type="button"
               onClick={handleEnhancePrompt}
               disabled={!prompt.trim() || isEnhancing}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_14px_rgba(139,92,246,0.3)] hover:shadow-[0_0_20px_rgba(139,92,246,0.5)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:transform-none disabled:shadow-none transition-all duration-200 whitespace-nowrap shrink-0"
             >
               {isEnhancing ? (
                 <>
@@ -405,8 +405,8 @@ export function PromptInput({
                         onClick={() => setDetailLevel(value)}
                         className={
                           detailLevel === value
-                            ? "rounded-xl border border-indigo-500 bg-indigo-950/60 p-2.5 text-left text-white shadow-sm"
-                            : "rounded-xl border border-zinc-800 bg-zinc-900 p-2.5 text-left text-zinc-300 hover:border-zinc-700 hover:text-white transition-all"
+                            ? "rounded-xl border border-violet-500 bg-violet-950/50 p-2.5 text-left text-white shadow-[0_0_16px_rgba(139,92,246,0.25)] scale-[1.01] transition-all duration-200"
+                            : "rounded-xl border border-white/10 bg-white/[0.02] p-2.5 text-left text-zinc-300 hover:border-violet-500/40 hover:text-white hover:bg-white/[0.05] hover:scale-[1.005] transition-all duration-200"
                         }
                       >
                         <span className="block text-xs font-bold">{label}</span>
@@ -726,8 +726,8 @@ export function PromptInput({
         <button
           type="submit"
           disabled={!prompt.trim() || isGenerating}
-          className={`flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition-all hover:bg-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/20 active:scale-[0.98] whitespace-nowrap shrink-0 ${
-            !prompt.trim() || isGenerating ? "pointer-events-none opacity-50" : ""
+          className={`flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 px-6 py-3 text-xs font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.35)] hover:shadow-[0_0_28px_rgba(236,72,153,0.5)] hover:scale-[1.015] active:scale-[0.985] focus:outline-none focus:ring-4 focus:ring-violet-500/30 transition-all duration-300 whitespace-nowrap shrink-0 ${
+            !prompt.trim() || isGenerating ? "pointer-events-none opacity-50 shadow-none transform-none" : ""
           }`}
         >
           {isGenerating ? (

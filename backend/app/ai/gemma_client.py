@@ -17,6 +17,7 @@ from ..errors import (
 from ..llm.concurrency import llm_call_slot
 from ..llm.factory import get_llm_provider
 from ..llm.google_ai import GoogleAIProvider
+from ..llm.json_repair import repair_and_parse_json
 from ..llm.openai_compat import OpenAICompatProvider
 from ..llm.resilience import llm_resilience
 
@@ -96,34 +97,10 @@ class GemmaClient:
         text = text.strip()
         if not text:
             raise LLMInvalidResponse("The model returned an empty response.")
-
-        if "```" in text:
-            lines = text.splitlines()
-            json_lines = []
-            in_fence = False
-            for line in lines:
-                if line.strip().startswith("```"):
-                    in_fence = not in_fence
-                    continue
-                if in_fence:
-                    json_lines.append(line)
-            if json_lines:
-                text = "\n".join(json_lines).strip()
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            logger.debug("Provider response was not a JSON object at the root.")
-
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(text[start : end + 1])
-            except json.JSONDecodeError:
-                logger.debug("Could not parse a JSON object from the response envelope.")
-
-        raise LLMInvalidResponse(f"Could not parse valid JSON from LLM response: {text[:200]}")
+        parsed = repair_and_parse_json(text, source_name="Gemma")
+        if isinstance(parsed, dict):
+            return parsed
+        return {"items": parsed}
 
     async def _call_google_ai(
         self,
@@ -168,6 +145,7 @@ class GemmaClient:
             "options": {
                 "temperature": self.temperature,
                 "num_predict": max_tokens,
+                "num_ctx": 8192,
                 "stop": ["<end_of_turn>", "<eos>"],
             },
         }

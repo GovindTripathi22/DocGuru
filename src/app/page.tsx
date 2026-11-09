@@ -168,11 +168,14 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] font-sans antialiased text-zinc-100 flex flex-col">
+    <div className="min-h-screen bg-[#090A10] font-sans antialiased text-[#F8FAFC] flex flex-col relative overflow-hidden selection:bg-purple-500/30">
+      {/* Stitch MCP Ambient Luminescent Glows */}
+      <div className="ambient-glow-violet -top-40 -left-40" aria-hidden="true" />
+      <div className="ambient-glow-pink top-1/3 -right-40" aria-hidden="true" />
       <Header onHealthUpdate={setHealthData} />
       <ModeBanner mode={healthData?.mode} provider={healthData?.model_provider} />
 
-      <main className="mx-auto flex-1 w-full max-w-6xl px-6 py-5">
+      <main className="mx-auto flex-1 w-full max-w-6xl px-6 py-5 relative z-10">
         {/* Hero Section — compact once a template is loaded so the workspace stays front and center */}
         {currentStep === 1 ? (
           <div className="mb-5 rounded-2xl bg-zinc-950 p-6 text-white border border-zinc-800 relative overflow-hidden">
@@ -239,10 +242,10 @@ export default function Home() {
                   onClick={() => handleStepClick(item.step)}
                   className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-left text-xs transition-all ${
                     isActive
-                      ? "border-indigo-500/60 bg-indigo-950/25 text-white shadow-sm"
+                      ? "border-violet-500/80 bg-violet-950/30 text-white shadow-[0_0_20px_rgba(139,92,246,0.25)] scale-[1.01]"
                       : isCompleted
-                      ? "cursor-pointer border-emerald-500/35 bg-emerald-950/15 text-zinc-200 hover:border-emerald-400/60 hover:bg-emerald-950/25"
-                      : "cursor-default border-zinc-800/80 bg-zinc-950/40 text-zinc-500"
+                      ? "cursor-pointer border-emerald-500/35 bg-emerald-950/20 text-zinc-200 hover:border-emerald-400/60 hover:bg-emerald-950/30 hover:scale-[1.005]"
+                      : "cursor-default border-white/5 bg-white/[0.02] text-zinc-500"
                   }`}
                 >
                   <div>
@@ -281,7 +284,7 @@ export default function Home() {
 
         {/* Step 1: Upload Template */}
         {restoredSession && !templateData && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-fade-in-up">
             <div className="text-center">
               <h3 className="text-base font-semibold text-white">Select Base Template</h3>
               <p className="text-xs text-zinc-400 mt-0.5">
@@ -301,7 +304,7 @@ export default function Home() {
 
         {/* Step 2: Template Loaded & Prompt Input / Progress */}
         {restoredSession && templateData && !generationResult && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-fade-in-up">
             <TemplateLockDisplay spec={templateData.template_spec} onReset={handleReset} />
 
             {activeJobId ? (
@@ -343,7 +346,7 @@ export default function Home() {
 
         {/* Step 3: Result Display */}
         {restoredSession && generationResult && (
-          <div className="space-y-5">
+          <div className="space-y-5 animate-fade-in-up">
             <ResultPanel
               result={generationResult}
               templateType={templateData?.document_type || "docx"}

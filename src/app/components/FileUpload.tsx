@@ -170,11 +170,11 @@ export function FileUpload({
         aria-describedby={error ? "upload-help upload-error" : "upload-help"}
         className={`group relative flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-400 sm:p-7 ${
           isDragOver
-            ? "border-indigo-400 bg-indigo-950/25"
-            : "border-zinc-800 bg-zinc-950/70 hover:border-zinc-600 hover:bg-zinc-900/50"
+            ? "border-violet-400 bg-violet-950/30 shadow-[0_0_30px_rgba(139,92,246,0.3)] scale-[1.01]"
+            : "border-white/10 bg-white/[0.02] hover:border-violet-500/50 hover:bg-white/[0.04] hover:shadow-[0_0_25px_rgba(139,92,246,0.12)] hover:scale-[1.005]"
         } ${isLoading ? "pointer-events-none opacity-60" : ""}`}
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-900 ring-1 ring-zinc-800 group-hover:scale-105 group-hover:ring-indigo-500/40 transition-all">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-900/90 ring-1 ring-white/10 group-hover:scale-110 group-hover:ring-violet-500/50 group-hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all duration-300">
           {isLoading ? (
             <Loader2 className="h-6 w-6 animate-spin text-indigo-400 motion-reduce:animate-none" />
           ) : (
@@ -222,7 +222,7 @@ export function FileUpload({
       )}
 
       {/* Built-in Sample Templates for Instant Testing */}
-      <div className="rounded-2xl border border-zinc-800/90 bg-zinc-950/60 p-4">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-xl shadow-lg">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-800/80">
           <div>
             <h4 className="text-xs font-semibold text-zinc-200">
@@ -243,7 +243,7 @@ export function FileUpload({
                 type="button"
                 disabled={isLoading}
                 onClick={() => handleSampleSelect(preset)}
-                className="group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5 text-left transition-colors hover:border-indigo-500/50 hover:bg-zinc-900 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
+                className="group flex flex-col justify-between rounded-xl border border-white/10 bg-white/[0.02] p-3.5 text-left transition-all duration-300 ease-out hover:border-violet-500/60 hover:bg-white/[0.05] hover:shadow-[0_4px_20px_rgba(139,92,246,0.15)] hover:scale-[1.015] active:scale-[0.99] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">

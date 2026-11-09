@@ -122,7 +122,7 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
   const stageName = job?.stage ? (STAGE_LABELS[job.stage] || job.stage) : "Processing";
 
   return (
-    <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-950/80 p-6 backdrop-blur-xl space-y-5">
+    <div className="w-full rounded-2xl border border-white/10 bg-zinc-950/85 p-6 backdrop-blur-2xl shadow-2xl space-y-5 animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Loader2 className="h-5 w-5 text-indigo-400 animate-spin motion-reduce:animate-none" />
@@ -157,7 +157,7 @@ export function ProgressPanel({ jobId, onComplete, onError, onCancel }: Progress
           className="h-2 w-full overflow-hidden rounded-full bg-zinc-900 border border-zinc-800"
         >
           <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-cyan-500 transition-all duration-300 ease-out"
+            className="h-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-400 transition-all duration-500 ease-out relative shadow-[0_0_12px_rgba(168,85,247,0.5)]"
             style={{ width: `${progressPercent}%` }}
           />
         </div>

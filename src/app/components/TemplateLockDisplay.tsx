@@ -123,7 +123,7 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4 sm:p-5 shadow-lg backdrop-blur-xl space-y-3">
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/80 p-4 sm:p-5 shadow-xl backdrop-blur-2xl space-y-3 transition-all duration-300">
       {/* Friendly Template Badge & Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -143,7 +143,7 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-bold text-white text-sm sm:text-base">{spec.filename}</h3>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.25)]">
                 <ShieldCheck className="h-3 w-3" />
                 Template Locked
               </span>

@@ -17,6 +17,7 @@ from ..errors import (
     LLMUnavailable,
 )
 from .base import LLMResult, retry_after_seconds
+from .json_repair import repair_and_parse_json
 
 logger = logging.getLogger(__name__)
 
@@ -97,23 +98,7 @@ class OpenAICompatProvider:
             raise LLMInvalidResponse("Server returned no choices in response.")
 
         raw_content = choices[0].get("message", {}).get("content", "").strip()
-        if not raw_content or raw_content == "{}":
-            raise LLMInvalidResponse("Server returned an empty response.")
-
-        if raw_content.startswith("```"):
-            lines = raw_content.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip().startswith("```"):
-                lines = lines[:-1]
-            raw_content = "\n".join(lines).strip()
-
-        try:
-            parsed = json.loads(raw_content)
-        except json.JSONDecodeError as e:
-            raise LLMInvalidResponse(
-                f"Server returned non-JSON response: {raw_content[:200]}"
-            ) from e
+        parsed = repair_and_parse_json(raw_content, source_name="Server")
 
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0) or 0

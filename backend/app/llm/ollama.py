@@ -17,6 +17,7 @@ from ..errors import (
     LLMUnavailable,
 )
 from .base import LLMResult, retry_after_seconds
+from .json_repair import repair_and_parse_json
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class OllamaProvider:
             "options": {
                 "temperature": self.temperature,
                 "num_predict": tokens,
+                "num_ctx": 8192,
                 "stop": ["<end_of_turn>", "<eos>"],
             },
         }
@@ -91,24 +93,7 @@ class OllamaProvider:
             raise LLMUnavailable(f"Ollama communication error: {e}") from e
 
         raw_content = data.get("message", {}).get("content", "").strip()
-        if not raw_content or raw_content == "{}":
-            raise LLMInvalidResponse("Ollama returned an empty response.")
-
-        # Clean markdown fences if any
-        if raw_content.startswith("```"):
-            lines = raw_content.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip().startswith("```"):
-                lines = lines[:-1]
-            raw_content = "\n".join(lines).strip()
-
-        try:
-            parsed = json.loads(raw_content)
-        except json.JSONDecodeError as e:
-            raise LLMInvalidResponse(
-                f"Ollama returned non-JSON response: {raw_content[:200]}"
-            ) from e
+        parsed = repair_and_parse_json(raw_content, source_name="Ollama")
 
         prompt_tokens = data.get("prompt_eval_count", 0) or 0
         completion_tokens = data.get("eval_count", 0) or 0

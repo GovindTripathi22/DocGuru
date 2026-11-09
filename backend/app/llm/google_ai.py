@@ -21,6 +21,7 @@ from ..errors import (
     LLMUnavailable,
 )
 from .base import LLMResult, retry_after_seconds
+from .json_repair import repair_and_parse_json
 
 logger = logging.getLogger(__name__)
 
@@ -138,24 +139,7 @@ class GoogleAIProvider:
 
         raw_text = response.text or ""
         raw_text = raw_text.strip()
-        if not raw_text or raw_text == "{}":
-            raise LLMInvalidResponse("Google AI returned an empty response.")
-
-        # Clean markdown fences if any
-        if raw_text.startswith("```"):
-            lines = raw_text.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip().startswith("```"):
-                lines = lines[:-1]
-            raw_text = "\n".join(lines).strip()
-
-        try:
-            parsed = json.loads(raw_text)
-        except json.JSONDecodeError as e:
-            raise LLMInvalidResponse(
-                f"Google AI returned non-JSON response: {raw_text[:200]}"
-            ) from e
+        parsed = repair_and_parse_json(raw_text, source_name="Google AI")
 
         prompt_tokens = 0
         completion_tokens = 0

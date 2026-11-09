@@ -67,10 +67,10 @@ export function Header({ onHealthUpdate }: { onHealthUpdate?: (health: HealthDat
   }, [fetchHealth]);
 
   return (
-    <header className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-xl sticky top-0 z-50">
+    <header className="border-b border-white/10 bg-[#090A10]/80 backdrop-blur-2xl sticky top-0 z-50">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
         <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600/30 to-fuchsia-600/20 text-violet-300 border border-violet-500/40 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
             <FileText className="h-5 w-5" />
           </div>
           <div>
@@ -79,7 +79,7 @@ export function Header({ onHealthUpdate }: { onHealthUpdate?: (health: HealthDat
                 DocGuru <span className="text-xs font-medium text-zinc-400 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">v{version}</span>
               </h1>
               {healthStatus === "ready" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/60 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/30">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/60 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
                   <CheckCircle2 className="h-3 w-3" /> Ready
                 </span>
               )}
@@ -111,7 +111,7 @@ export function Header({ onHealthUpdate }: { onHealthUpdate?: (health: HealthDat
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-300">
+          <div className="hidden sm:flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-xs text-zinc-300 backdrop-blur-md">
             <span className="text-zinc-400">Provider:</span>
             <strong className="text-white font-medium">{modelInfo}</strong>
           </div>
