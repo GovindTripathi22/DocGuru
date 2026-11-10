@@ -216,7 +216,7 @@ class DocxAnalyzer:
             if cell.text.strip()
         ]
         txbx_texts = [
-            " ".join(t.strip() for t in node.xpath(".//w:t/text()") if t.strip())
+            " ".join(t.strip() for t in node.itertext() if t.strip())
             for node in doc._body._body.xpath(".//w:txbxContent")
         ]
         full_text = "\n".join([*full_text_paras, *table_texts, *txbx_texts])

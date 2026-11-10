@@ -860,6 +860,7 @@ class DocxEngine:
         institution: str | None = None,
         academic_year: str | None = None,
         body_anchor_idx: int | None = None,
+        anchor_elem: Any = None,
         warnings: list[str] | None = None,
     ) -> int:
         title = plan.title or "Document Title"
@@ -987,6 +988,8 @@ class DocxEngine:
 
         limit = body_anchor_idx if body_anchor_idx is not None else min(100, len(doc.paragraphs))
         for p in list(doc.paragraphs[:limit]):
+            if anchor_elem is not None and p._p == anchor_elem:
+                break
             process_para(p, allow_remove=True)
 
         for tbl in doc.tables:
@@ -1110,6 +1113,7 @@ class DocxEngine:
         doc: DocumentObject,
         plan: DocumentPlan | None = None,
         body_anchor_idx: int | None = None,
+        anchor_elem: Any = None,
     ) -> None:
         toc_idx = None
         for i, p in enumerate(doc.paragraphs):
@@ -1123,6 +1127,8 @@ class DocxEngine:
 
         end_toc = body_anchor_idx if body_anchor_idx else toc_idx + 25
         for p in list(doc.paragraphs[toc_idx + 1 : end_toc]):
+            if anchor_elem is not None and p._p == anchor_elem:
+                break
             t = p.text.strip()
             if not t:
                 continue
@@ -1160,8 +1166,24 @@ class DocxEngine:
         anchor_pos = (
             body_children.index(anchor_elem)
             if anchor_elem is not None and anchor_elem in body_children
-            else len(body_children) - 1
+            else None
         )
+        if anchor_pos is None:
+            # Fallback: scan for first body paragraph with Chapter 1 or Note
+            for idx, child in enumerate(body_children):
+                if child.tag.endswith("p"):
+                    p_text = "".join(child.itertext()).strip().upper()
+                    if (
+                        "CHAPTER 1" in p_text
+                        or "CHAPTER - 1" in p_text
+                        or "CHAPTER-1" in p_text
+                        or "NOTE: CHAPTER 1" in p_text
+                        or "NOTE: CHAPTER - 1" in p_text
+                    ):
+                        anchor_pos = idx
+                        break
+        if anchor_pos is None:
+            anchor_pos = len(body_children) - 1
 
         saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
 
@@ -1343,7 +1365,7 @@ class DocxEngine:
 
             typography_rules = getattr(locked_doc.spec, "parsed_typography_rules", {})
             self._inhabit_abstract(doc, plan, typography_rules, anchor_idx)
-            self._inhabit_table_of_contents(doc, plan, anchor_idx)
+            self._inhabit_table_of_contents(doc, plan, anchor_idx, anchor_elem=anchor_elem)
             self._inhabit_institutional_front_matter(
                 doc,
                 plan,
@@ -1353,6 +1375,7 @@ class DocxEngine:
                 institution=inst_name,
                 academic_year=acad_year,
                 body_anchor_idx=anchor_idx,
+                anchor_elem=anchor_elem,
                 warnings=warnings,
             )
 
