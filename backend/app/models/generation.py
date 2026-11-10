@@ -93,6 +93,7 @@ class DocumentPlan(BaseModel):
     department: str | None = None
     institution: str | None = None
     academic_year: str | None = None
+    include_tables: bool = True
     sections: list[DocumentSection] = Field(default_factory=list)
     conclusion: str | None = None
     abstract: str | None = None
@@ -144,6 +145,7 @@ class GenerationRequest(BaseModel):
     custom_instructions: str | None = Field(default=None, max_length=1000)
     research_enabled: bool = False
     include_images: bool = True
+    include_tables: bool = True
     image_mode: Literal["off", "search", "placeholder", "auto", "generate"] = "search"
     template_mode: Literal["auto", "fill", "append", "replace_body"] = "auto"
     body_anchor_index: int | None = None

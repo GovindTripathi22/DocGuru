@@ -1153,6 +1153,7 @@ function synthesizeDocumentSections(
   customInstructions?: string,
   researchSources?: ResearchSource[],
   selectedRules?: string[],
+  includeTables: boolean = true,
 ): PlannedSectionItem[] {
   const cite1 = researchSources?.length ? " [1]" : "";
   const cite2 = researchSources && researchSources.length > 1 ? " [2]" : "";
@@ -1197,16 +1198,30 @@ function synthesizeDocumentSections(
       heading_style: "Heading 1",
       paragraphs: [
         `To evaluate implementation alternatives for ${topic}, three architectural profiles were benchmarked across throughput stability, tail latency (P99), and operational complexity.${cite2}`,
+        ...(includeTables
+          ? []
+          : [
+              `Baseline Monolithic Pipeline demonstrated 420 ms P99 latency with low initial overhead. Staged Concurrent Pipeline achieved 115 ms P99 with 3.8x sustained throughput. Verified Template-Locked Engine attained 68 ms P99 latency with 5.2x deterministic scaling.`,
+            ]),
       ],
-      table_data: {
-        title: `Table 1: Comparative Architecture Evaluation for ${topic}`,
-        headers: ["Architecture Profile", "P99 Latency", "Throughput Scaling", "Operational Overhead"],
-        rows: [
-          ["Baseline Monolithic Pipeline", "420 ms", "1.0x (Reference)", "Low initial / High maintenance"],
-          ["Staged Concurrent Pipeline", "115 ms", "3.8x Sustained", "Moderate (Bounded workers)"],
-          ["Verified Template-Locked Engine", "68 ms", "5.2x Deterministic", "Low (Automated invariant checks)"],
-        ],
-      },
+      bullets: includeTables
+        ? undefined
+        : [
+            "Baseline Monolithic Pipeline: 420 ms P99, 1.0x throughput, high maintenance overhead.",
+            "Staged Concurrent Pipeline: 115 ms P99, 3.8x sustained throughput, bounded worker isolation.",
+            "Verified Template-Locked Engine: 68 ms P99, 5.2x deterministic scaling, automated invariant checks.",
+          ],
+      table_data: includeTables
+        ? {
+            title: `Table 1: Comparative Architecture Evaluation for ${topic}`,
+            headers: ["Architecture Profile", "P99 Latency", "Throughput Scaling", "Operational Overhead"],
+            rows: [
+              ["Baseline Monolithic Pipeline", "420 ms", "1.0x (Reference)", "Low initial / High maintenance"],
+              ["Staged Concurrent Pipeline", "115 ms", "3.8x Sustained", "Moderate (Bounded workers)"],
+              ["Verified Template-Locked Engine", "68 ms", "5.2x Deterministic", "Low (Automated invariant checks)"],
+            ],
+          }
+        : undefined,
     },
     {
       title: "4. Security, Compliance & Risk Mitigation",
@@ -1873,6 +1888,7 @@ export interface StandaloneGenerateInput {
   enabled_rule_indices?: number[];
   include_images?: boolean;
   image_mode?: "off" | "search" | "placeholder";
+  include_tables?: boolean;
 }
 
 export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
@@ -1991,6 +2007,7 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
       effectiveInstructions || undefined,
       researchSources,
       activeRules,
+      input.include_tables ?? true,
     );
     outputBuffer = buildDocxFromPlan(templateRecord, topic, sections, {
       mode: input.mode,

@@ -77,6 +77,157 @@ def strip_markdown_delimiters(text: str) -> str:
     return "".join(s.text for s in spans)
 
 
+def deduplicate_repetitive_text(text: str) -> str:
+    """
+    Detects and collapses consecutive identical lines, phrases, or clauses caused by LLM repetition loops.
+    """
+    if not text or len(text) < 15:
+        return text
+
+    # 1. Deduplicate consecutive repetitive lines
+    lines = text.split("\n")
+    cleaned_lines: list[str] = []
+    last_line = None
+    for line in lines:
+        trimmed = line.strip()
+        if trimmed and trimmed == last_line:
+            continue
+        last_line = trimmed if trimmed else None
+        cleaned_lines.append(line)
+    res = "\n".join(cleaned_lines)
+
+    # 2. Collapse repeated sentences or clauses of 8+ chars repeating 2+ times
+    res = re.sub(r"(.{8,}?)(?:\s*\1){2,}", r"\1", res)
+    return res
+
+
+DISALLOWED_PARAGRAPH_SNIPPETS = {
+    "bullet_points",
+    "bullet_point",
+    "bullets",
+    "paragraphs",
+    "table_data",
+    "[seminar topic]",
+    "[title]",
+    ": lowercase",
+    ": uppercase",
+    ": uppercase tent",
+    ": uppercase act paragraph",
+    "none",
+    "null",
+}
+
+
+def is_stray_placeholder_or_schema_key(text: str) -> bool:
+    t_clean = text.strip().lower()
+    if t_clean in DISALLOWED_PARAGRAPH_SNIPPETS:
+        return True
+    if re.match(r"^:\s*(?:lower|upper)case", t_clean):
+        return True
+    if re.match(r"^\[(?:seminar topic|title|topic)\]$", t_clean):
+        return True
+    return False
+
+
+def extract_markdown_table(text: str | list[str]) -> tuple[dict[str, Any] | None, Any]:
+    """
+    Parses pipe-delimited markdown tables from text or a list of paragraph strings,
+    returning (table_dict, remaining_text_or_paragraphs).
+    """
+    if isinstance(text, list):
+        table_dict = None
+        remaining_paras = []
+        for p in text:
+            if not isinstance(p, str):
+                remaining_paras.append(p)
+                continue
+            if "|" in p and table_dict is None:
+                tbl, remaining = extract_markdown_table(p)
+                if tbl is not None:
+                    table_dict = tbl
+                    if remaining.strip():
+                        remaining_paras.append(remaining.strip())
+                    continue
+            remaining_paras.append(p)
+        return table_dict, remaining_paras
+
+    if not isinstance(text, str) or "|" not in text:
+        return None, text
+
+    lines = [l for l in text.split("\n")]
+    table_lines: list[tuple[int, str]] = []
+    caption = "Data Table"
+
+    for idx, l in enumerate(lines):
+        trimmed = l.strip()
+        if trimmed.startswith("|") and trimmed.endswith("|") and trimmed.count("|") >= 2:
+            table_lines.append((idx, trimmed))
+        elif re.match(r"^Table\s*\d*:\s*(.+)", trimmed, re.I):
+            caption = trimmed
+
+    # Multi-line table
+    if len(table_lines) >= 2:
+        headers: list[str] = []
+        rows: list[list[str]] = []
+        for _, tl in table_lines:
+            cells = [c.strip() for c in tl.strip("|").split("|")]
+            if all(re.match(r"^:?-+:?$", c) for c in cells):
+                continue
+            if not headers:
+                headers = cells[:12]
+            else:
+                rows.append(cells[:12])
+        if headers or rows:
+            table_line_indices = {idx for idx, _ in table_lines}
+            remaining = [
+                l
+                for i, l in enumerate(lines)
+                if i not in table_line_indices
+                and not (re.match(r"^Table\s*\d*:\s*", l.strip(), re.I) and l.strip() == caption)
+            ]
+            return {
+                "caption": caption,
+                "headers": headers,
+                "rows": rows,
+            }, "\n".join(remaining).strip()
+
+    # Inline single-line pipe table
+    if text.count("|") >= 6:
+        m = re.match(r"^(Table\s*\d*:[^|]+)\|(.*)", text, re.IGNORECASE)
+        if m:
+            caption = m.group(1).strip()
+            rest = "|" + m.group(2)
+        else:
+            caption = "Data Table"
+            rest = text
+
+        parts = re.split(r"\|\s*-+[\s\-\|]+", rest)
+        if len(parts) >= 2:
+            header_part = parts[0].strip().strip("|")
+            headers = [c.strip() for c in header_part.split("|") if c.strip()][:12]
+            body_part = parts[1].strip().strip("|")
+            body_cells = [c.strip() for c in body_part.split("|") if c.strip()]
+            col_count = len(headers)
+            if col_count > 0:
+                rows = []
+                curr_row: list[str] = []
+                for cell in body_cells:
+                    if re.match(r"^\d+$", cell) and len(curr_row) == col_count:
+                        rows.append(curr_row)
+                        curr_row = []
+                        continue
+                    curr_row.append(cell)
+                    if len(curr_row) == col_count:
+                        rows.append(curr_row)
+                        curr_row = []
+                if curr_row:
+                    rows.append(curr_row)
+                if headers or rows:
+                    return {"caption": caption, "headers": headers, "rows": rows}, ""
+
+    return None, text
+
+
 def sanitize_text(text: Any, max_len: int | None = None, field_name: str = "field") -> str:
     """
     Sanitizes arbitrary scalar values into clean, XML-legal, normalized unicode strings.
@@ -105,7 +256,10 @@ def sanitize_text(text: Any, max_len: int | None = None, field_name: str = "fiel
     text_str = re.sub(r"\n{3,}", "\n\n", text_str)
     text_str = text_str.strip()
 
-    # 5. Cap length if requested
+    # 5. Deduplicate repetitive loops
+    text_str = deduplicate_repetitive_text(text_str)
+
+    # 6. Cap length if requested
     if max_len is not None and len(text_str) > max_len:
         logger.warning(
             "Field '%s' length %d exceeded max %d; truncating", field_name, len(text_str), max_len
@@ -168,29 +322,6 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
             raw_paras = []
         elif not isinstance(raw_paras, (list, tuple)):
             raw_paras = [raw_paras]
-        paragraphs = []
-        for p in raw_paras:
-            clean_p = sanitize_text(p, max_len=4000, field_name="paragraph")
-            if clean_p:
-                clean_p = strip_markdown_delimiters(clean_p)
-                paragraphs.append(clean_p)
-                total_content_elements += 1
-
-        # Bullet points (accept both 'bullet_points' and 'bullets')
-        raw_bullets = (
-            sec.get("bullet_points") if sec.get("bullet_points") is not None else sec.get("bullets")
-        )
-        if raw_bullets is None:
-            raw_bullets = []
-        elif not isinstance(raw_bullets, (list, tuple)):
-            raw_bullets = [raw_bullets]
-        bullet_points = []
-        for b in raw_bullets:
-            clean_b = sanitize_text(b, max_len=500, field_name="bullet_point")
-            if clean_b:
-                clean_b = strip_markdown_delimiters(clean_b)
-                bullet_points.append(clean_b)
-                total_content_elements += 1
 
         # Table (accept both 'table' and 'table_data')
         table_dict = None
@@ -230,6 +361,37 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                 )
                 table_dict = {"caption": caption, "headers": headers, "rows": clean_rows}
 
+        paragraphs = []
+        for p in raw_paras:
+            clean_p = sanitize_text(p, max_len=4000, field_name="paragraph")
+            if not clean_p or is_stray_placeholder_or_schema_key(clean_p):
+                continue
+            clean_p = strip_markdown_delimiters(clean_p)
+            if table_dict is None:
+                extracted_tbl, remaining_text = extract_markdown_table(clean_p)
+                if extracted_tbl is not None:
+                    table_dict = extracted_tbl
+                    clean_p = remaining_text
+            if clean_p and not is_stray_placeholder_or_schema_key(clean_p):
+                paragraphs.append(clean_p)
+                total_content_elements += 1
+
+        # Bullet points (accept both 'bullet_points' and 'bullets')
+        raw_bullets = (
+            sec.get("bullet_points") if sec.get("bullet_points") is not None else sec.get("bullets")
+        )
+        if raw_bullets is None:
+            raw_bullets = []
+        elif not isinstance(raw_bullets, (list, tuple)):
+            raw_bullets = [raw_bullets]
+        bullet_points = []
+        for b in raw_bullets:
+            clean_b = sanitize_text(b, max_len=500, field_name="bullet_point")
+            if clean_b and not is_stray_placeholder_or_schema_key(clean_b):
+                clean_b = strip_markdown_delimiters(clean_b)
+                bullet_points.append(clean_b)
+                total_content_elements += 1
+
         if paragraphs or bullet_points or table_dict:
             normalized_sections.append(
                 {
@@ -243,6 +405,7 @@ def _normalize_document_plan(raw: dict[str, Any]) -> dict[str, Any]:
                     "paragraphs": paragraphs,
                     "bullet_points": bullet_points,
                     "table": table_dict,
+                    "table_data": table_dict,
                     "applied_rules": sec.get("applied_rules") or [],
                 }
             )

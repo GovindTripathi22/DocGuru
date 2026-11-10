@@ -9,8 +9,8 @@ from typing import Any, cast
 from docx import Document
 from docx.document import Document as DocumentObject
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 from docx.shared import Inches, Pt, RGBColor
 from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
@@ -339,27 +339,85 @@ class DocxEngine:
         elif len(doc.tables) > 0 and 0 <= source_table_index < len(doc.tables):
             template_tbl_xml = copy.deepcopy(doc.tables[source_table_index]._tbl)
         else:
-            # Create standard table with fallback style
+            # Create standard table with fallback style and elegant formatting
             table = doc.add_table(rows=len(rows) + (1 if headers else 0), cols=col_count)
+            table_styled = False
             try:
                 valid_style = locked_doc.get_valid_table_style()
                 if valid_style and valid_style in locked_doc.valid_doc_table_styles:
                     table.style = doc.styles[valid_style]
+                    table_styled = True
             except (KeyError, TypeError, ValueError):
                 logger.warning(
                     "Table style could not be applied; the template table structure is retained."
                 )
 
+            # Apply clean borders if no existing table style was applied
+            if not table_styled:
+                tblPr = table._tbl.tblPr
+                if not tblPr.xpath("./w:tblBorders"):
+                    borders_xml = (
+                        '<w:tblBorders ' + nsdecls('w') + '>'
+                        '<w:top w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>'
+                        '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>'
+                        '<w:left w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>'
+                        '<w:right w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>'
+                        '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/>'
+                        '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/>'
+                        '</w:tblBorders>'
+                    )
+                    tblPr.append(parse_xml(borders_xml))
+
+            font_name = None
+            if locked_doc.spec and locked_doc.spec.fonts:
+                font_name = locked_doc.spec.fonts.body or locked_doc.spec.fonts.default
+            font_name = font_name or "Times New Roman"
+
             curr_row = 0
             if headers:
                 for c, h in enumerate(headers):
                     if c < col_count:
-                        table.cell(0, c).text = str(h)
+                        cell = table.cell(0, c)
+                        cell.text = str(h)
+                        # Header cell shading
+                        try:
+                            cell._tc.get_or_add_tcPr().append(
+                                parse_xml('<w:shd ' + nsdecls('w') + ' w:fill="F1F5F9"/>')
+                            )
+                        except Exception:
+                            pass
+                        for p in cell.paragraphs:
+                            p.paragraph_format.line_spacing = 1.15
+                            p.paragraph_format.space_before = Pt(3)
+                            p.paragraph_format.space_after = Pt(3)
+                            for r in p.runs:
+                                r.font.name = font_name
+                                r.font.size = Pt(10.5)
+                                r.bold = True
                 curr_row = 1
+
             for r_idx, r_data in enumerate(rows):
                 for c, val in enumerate(r_data):
                     if c < col_count:
-                        table.cell(curr_row + r_idx, c).text = str(val)
+                        cell = table.cell(curr_row + r_idx, c)
+                        cell.text = str(val)
+                        for p in cell.paragraphs:
+                            p.paragraph_format.line_spacing = 1.15
+                            p.paragraph_format.space_before = Pt(2)
+                            p.paragraph_format.space_after = Pt(2)
+                            for r in p.runs:
+                                r.font.name = font_name
+                                r.font.size = Pt(10.0)
+
+            # Ensure table is positioned before sectPr
+            sect_pr = None
+            for child in list(body_elem):
+                if child.tag.endswith("sectPr"):
+                    sect_pr = child
+                    break
+            if sect_pr is not None and table._tbl != sect_pr:
+                sect_pr.addprevious(table._tbl)
+
             self._apply_table_multilingual_properties(table, locked_doc)
             return table
 
@@ -785,6 +843,9 @@ class DocxEngine:
             self.insert_bullet_point(locked_doc, b_text, warnings=warnings)
 
         if section.table_data and (section.table_data.headers or section.table_data.rows):
+            if section.table_data.title:
+                p_tbl_cap = locked_doc.doc.add_paragraph(section.table_data.title)
+                self._apply_typography_rules(p_tbl_cap, "caption", locked_doc)
             self.insert_cloned_table(
                 locked_doc,
                 headers=section.table_data.headers,
@@ -1209,6 +1270,7 @@ class DocxEngine:
                     pass
 
         # Render sections in order
+        table_counter = 0
         for idx, section in enumerate(plan.sections, start=1):
             stitle = section.title.strip()
             if not stitle.upper().startswith("CHAPTER") and not re.match(r"^\d+\.", stitle):
@@ -1232,9 +1294,14 @@ class DocxEngine:
                     self.insert_bullet_point(locked_doc, b_text, warnings=warnings)
 
             if section.table_data and (section.table_data.headers or section.table_data.rows):
-                if section.table_data.title:
-                    p_tbl_cap = doc.add_paragraph(section.table_data.title)
-                    self._apply_typography_rules(p_tbl_cap, "caption", locked_doc)
+                table_counter += 1
+                caption_text = section.table_data.title
+                if not caption_text or caption_text == "Data Table":
+                    caption_text = f"Table {table_counter}: Comparative Overview for {section.title}"
+                elif not re.match(r"^Table\s*\d*:", caption_text, re.I):
+                    caption_text = f"Table {table_counter}: {caption_text}"
+                p_tbl_cap = doc.add_paragraph(caption_text)
+                self._apply_typography_rules(p_tbl_cap, "caption", locked_doc)
                 self.insert_cloned_table(
                     locked_doc,
                     headers=section.table_data.headers,
@@ -1266,6 +1333,22 @@ class DocxEngine:
                 for sub_b in sub.bullets:
                     if sub_b and sub_b.strip():
                         self.insert_bullet_point(locked_doc, sub_b, warnings=warnings)
+                if sub.table_data and (sub.table_data.headers or sub.table_data.rows):
+                    table_counter += 1
+                    sub_caption = sub.table_data.title
+                    if not sub_caption or sub_caption == "Data Table":
+                        sub_caption = f"Table {table_counter}: {sub_title} Data"
+                    elif not re.match(r"^Table\s*\d*:", sub_caption, re.I):
+                        sub_caption = f"Table {table_counter}: {sub_caption}"
+                    p_sub_cap = doc.add_paragraph(sub_caption)
+                    self._apply_typography_rules(p_sub_cap, "caption", locked_doc)
+                    self.insert_cloned_table(
+                        locked_doc,
+                        headers=sub.table_data.headers,
+                        rows=sub.table_data.rows,
+                        saved_table_xmls=saved_table_xmls,
+                        source_table_index=sub.table_data.source_table_index,
+                    )
 
             valid_numbers = [
                 source_numbers[item]

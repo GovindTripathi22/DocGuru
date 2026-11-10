@@ -389,6 +389,7 @@ class JobManager:
                     custom_instructions=req.custom_instructions,
                     include_images=req.include_images,
                     image_mode=req.image_mode,
+                    include_tables=req.include_tables,
                 )
             else:
                 plan = await self.planner.plan_document(
@@ -400,6 +401,7 @@ class JobManager:
                     custom_instructions=req.custom_instructions,
                     include_images=req.include_images,
                     image_mode=req.image_mode,
+                    include_tables=req.include_tables,
                     research_enabled=req.research_enabled,
                     on_progress=report_planning_progress,
                 )
@@ -425,6 +427,7 @@ class JobManager:
                 custom_instructions=req.custom_instructions,
                 include_images=req.include_images,
                 image_mode=req.image_mode,
+                include_tables=req.include_tables,
                 research_enabled=req.research_enabled,
                 on_progress=report_planning_progress,
             )

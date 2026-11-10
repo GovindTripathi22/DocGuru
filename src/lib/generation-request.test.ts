@@ -98,4 +98,21 @@ describe("buildGenerationPayload", () => {
       overrides: [{ target: "heading_color", value: "#23A1EF" }],
     });
   });
+
+  it("handles include_tables option defaulting to true and toggling to false", () => {
+    const defaultPayload = buildGenerationPayload("template", "docx", common);
+    expect(defaultPayload.include_tables).toBe(true);
+
+    const tablesDisabled = buildGenerationPayload("template", "docx", {
+      ...common,
+      includeTables: false,
+    });
+    expect(tablesDisabled.include_tables).toBe(false);
+
+    const tablesEnabled = buildGenerationPayload("template", "docx", {
+      ...common,
+      includeTables: true,
+    });
+    expect(tablesEnabled.include_tables).toBe(true);
+  });
 });

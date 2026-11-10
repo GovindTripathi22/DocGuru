@@ -43,6 +43,7 @@ export function PromptInput({
   const [researchEnabled, setResearchEnabled] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const [imageMode, setImageMode] = useState<"off" | "search" | "placeholder">("search");
+  const [includeTables, setIncludeTables] = useState<boolean>(true);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhanceSuccess, setEnhanceSuccess] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
@@ -172,6 +173,7 @@ export function PromptInput({
       customInstructions: customInstructions.trim() || undefined,
       includeImages: imageMode !== "off",
       imageMode,
+      includeTables,
       enabledRuleIndexes,
       ...(author.trim() ? { author: author.trim() } : {}),
       ...(guide.trim() ? { guide: guide.trim() } : {}),
@@ -306,8 +308,8 @@ export function PromptInput({
         </div>
       </div>
 
-      {/* Primary Essential Options (Length & Images) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {/* Primary Essential Options (Length, Images & Tables) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Document / Presentation Length */}
         {documentType === "pptx" ? (
           <div className="rounded-xl border border-sky-200/80 bg-white/75 p-4 flex flex-col justify-between shadow-sm">
@@ -513,6 +515,45 @@ export function PromptInput({
             </div>
           )}
         </div>
+
+        {/* Data Tables & Benchmarks */}
+        {documentType !== "pptx" && (
+          <div className="rounded-xl border border-sky-200/80 bg-white/75 p-4 flex flex-col justify-between shadow-sm">
+            <fieldset>
+              <legend className="text-xs font-bold text-slate-800">Data tables &amp; benchmarks</legend>
+              <p className="mt-1 text-[11px] text-slate-500 font-medium">
+                Include formatted tables for comparative benchmarks, specifications, and metrics.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                <label className="flex items-center gap-2 text-slate-800 font-medium cursor-pointer">
+                  <input
+                    type="radio"
+                    name="table-mode"
+                    checked={includeTables}
+                    onChange={() => setIncludeTables(true)}
+                    className="accent-sky-600"
+                  />
+                  Include tables
+                </label>
+                <label className="flex items-center gap-2 text-slate-800 font-medium cursor-pointer">
+                  <input
+                    type="radio"
+                    name="table-mode"
+                    checked={!includeTables}
+                    onChange={() => setIncludeTables(false)}
+                    className="accent-sky-600"
+                  />
+                  No tables
+                </label>
+              </div>
+            </fieldset>
+            <div className="border-t border-sky-200/70 pt-2.5 mt-3">
+              <span className="text-[11px] text-slate-500 font-medium">
+                Rendered with OpenXML table grid borders and typography rules.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Detected Template Rules (Shown neatly when template contains extracted rules) */}

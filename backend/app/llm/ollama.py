@@ -64,6 +64,8 @@ class OllamaProvider:
                 "temperature": self.temperature,
                 "num_predict": tokens,
                 "num_ctx": 8192,
+                "repeat_penalty": 1.18,
+                "repeat_last_n": 64,
                 "stop": ["<end_of_turn>", "<eos>"],
             },
         }

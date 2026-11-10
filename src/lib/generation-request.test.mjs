@@ -100,3 +100,20 @@ test("forwards optional seminar metadata fields when provided", () => {
   assert.equal(payload.institution, "PICT Pune");
   assert.equal(payload.academic_year, "2025-2026");
 });
+
+test("include_tables defaults to true and can be set to false", () => {
+  const defaultPayload = buildGenerationPayload("template-id", "docx", {
+    prompt: "Write a report",
+    mode: "create_document",
+    detailLevel: "medium",
+  });
+  assert.equal(defaultPayload.include_tables, true);
+
+  const disabledPayload = buildGenerationPayload("template-id", "docx", {
+    prompt: "Write a report",
+    mode: "create_document",
+    detailLevel: "medium",
+    includeTables: false,
+  });
+  assert.equal(disabledPayload.include_tables, false);
+});

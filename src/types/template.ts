@@ -108,6 +108,7 @@ export interface PromptData {
   enabledRuleIndexes?: number[];
   includeImages?: boolean;
   imageMode?: "off" | "search" | "placeholder";
+  includeTables?: boolean;
   author?: string;
   guide?: string;
   department?: string;

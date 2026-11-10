@@ -222,3 +222,149 @@ def test_docx_engine_inhabits_seminar_template_without_second_doc(seminar_templa
     report = validator.validate(spec, result_path, original_file_path=str(seminar_template_path))
     assert report.passed is True, f"DiffValidator failed with issues: {report.issues}"
     assert report.status == "passed"
+
+
+def test_repetition_loop_breaker_and_markdown_table_normalization():
+    """Test deduplicate_repetitive_text, extract_markdown_table, and is_stray_placeholder_or_schema_key."""
+    from backend.app.planning.normalize import (
+        deduplicate_repetitive_text,
+        extract_markdown_table,
+        is_stray_placeholder_or_schema_key,
+        normalize_plan,
+    )
+
+    # 1. Test deduplicate_repetitive_text with degenerate repeating loops
+    repeated_title = "Table 1: AlphaGo vs. DeepMind's Other Systems\n" * 50
+    cleaned_repetition = deduplicate_repetitive_text(repeated_title)
+    assert cleaned_repetition.count("Table 1: AlphaGo") <= 2
+    assert len(cleaned_repetition) < len(repeated_title)
+
+    # Inline repeated sentence loop
+    looping_sentence = (
+        "AlphaGo defeated Lee Sedol. " * 20
+    )
+    cleaned_inline = deduplicate_repetitive_text(looping_sentence)
+    assert cleaned_inline.count("AlphaGo defeated Lee Sedol.") <= 2
+
+    # 2. Test extract_markdown_table parses pipe-formatted table and strips it from paragraphs
+    paragraphs_with_table = [
+        "In this chapter we analyze performance trade-offs.",
+        "| Feature | AlphaGo | Other Systems | Notes |\n|---|---|---|---|\n| Search | MCTS | Minimax | Deep RL |\n| GPU Clusters | 48 | 8 | Scaled |",
+        "Overall the results show clear superiority.",
+    ]
+    extracted_tbl, clean_paras = extract_markdown_table(paragraphs_with_table)
+    assert extracted_tbl is not None
+    assert extracted_tbl["headers"] == ["Feature", "AlphaGo", "Other Systems", "Notes"]
+    assert len(extracted_tbl["rows"]) == 2
+    assert extracted_tbl["rows"][0] == ["Search", "MCTS", "Minimax", "Deep RL"]
+    assert len(clean_paras) == 2
+    assert "Search | MCTS" not in clean_paras[0] and "Search | MCTS" not in clean_paras[1]
+
+    # 3. Test stray schema keys and guideline callouts are caught
+    assert is_stray_placeholder_or_schema_key("bullet_points") is True
+    assert is_stray_placeholder_or_schema_key("table_data") is True
+    assert is_stray_placeholder_or_schema_key(": lowercase") is True
+    assert is_stray_placeholder_or_schema_key(": Uppercase tent") is True
+    assert is_stray_placeholder_or_schema_key("[Seminar Topic]") is True
+    assert is_stray_placeholder_or_schema_key("Valid paragraph introducing AlphaGo architecture.") is False
+
+    # 4. Test normalize_plan extracts markdown table and purges stray artifacts
+    raw_plan_dict = {
+        "title": "AlphaGo Report",
+        "sections": [
+            {
+                "title": "Architecture Overview",
+                "paragraphs": [
+                    ": lowercase",
+                    "bullet_points",
+                    "AlphaGo uses deep convolutional networks combined with tree search.",
+                    "| Component | Architecture | Role |\n| Policy Net | 13-layer CNN | Move selection |\n| Value Net | 13-layer CNN | Position evaluation |",
+                ],
+                "bullets": ["Trained on KGS Go server", "Self-play reinforcement learning"],
+            }
+        ],
+    }
+    normalized = normalize_plan(raw_plan_dict)
+    sec = normalized["sections"][0]
+    assert sec.get("table_data") is not None
+    assert sec["table_data"]["headers"] == ["Component", "Architecture", "Role"]
+    assert len(sec["table_data"]["rows"]) == 2
+    assert not any(": lowercase" in p for p in sec["paragraphs"])
+    assert not any("bullet_points" in p for p in sec["paragraphs"])
+
+
+def test_docx_engine_table_rendering_and_inhabitation(seminar_template_path, tmp_path):
+    """Test DocxEngine table styling (borders, shading, captions) and table inclusion/exclusion."""
+    from backend.app.models.generation import TableData
+
+    analyzer = TemplateAnalyzer()
+    spec = analyzer.analyze(str(seminar_template_path))
+
+    plan_with_tables = DocumentPlan(
+        title="ADVANCED AI ARCHITECTURES",
+        author="Rohit Verma",
+        guide="Dr. P. Sharma",
+        abstract="Comparative analysis of deep reinforcement learning systems.",
+        include_tables=True,
+        sections=[
+            DocumentSection(
+                title="System Comparison",
+                paragraphs=["Below is the comparative analysis of deep RL architectures."],
+                table_data=TableData(
+                    title="Table 1: Benchmark Comparison Across Reinforcement Learning Frameworks",
+                    headers=["Framework", "Policy Type", "Throughput", "Convergence Time"],
+                    rows=[
+                        ["AlphaGo", "MCTS + Value Net", "12,000 pos/sec", "21 days"],
+                        ["MuZero", "Model-Based RL", "18,500 pos/sec", "14 days"],
+                        ["AlphaZero", "Self-Play RL", "15,000 pos/sec", "10 days"],
+                    ],
+                ),
+            )
+        ],
+    )
+
+    doc = docx.Document(str(seminar_template_path))
+    locked_doc = LockedTemplate(doc, str(seminar_template_path), spec)
+    engine = DocxEngine()
+    out_with_tables = tmp_path / "report_with_tables.docx"
+    engine.generate_from_plan(locked_doc, plan_with_tables, str(out_with_tables))
+
+    gen_doc = docx.Document(str(out_with_tables))
+    # Assert table was rendered
+    assert len(gen_doc.tables) >= 1
+    # Check table content
+    table_texts = [cell.text for tbl in gen_doc.tables for row in tbl.rows for cell in row.cells]
+    assert "AlphaGo" in table_texts
+    assert "MuZero" in table_texts
+    assert "MCTS + Value Net" in table_texts
+
+    # Check caption
+    full_text = "\n".join(p.text for p in gen_doc.paragraphs)
+    assert "Table 1: Benchmark Comparison" in full_text
+
+    # Validate DiffValidator
+    validator = DiffValidator()
+    report = validator.validate(spec, str(out_with_tables), original_file_path=str(seminar_template_path))
+    assert report.passed is True
+
+    # Now verify plan with include_tables=False does not render tables
+    plan_no_tables = DocumentPlan(
+        title="ADVANCED AI ARCHITECTURES",
+        author="Rohit Verma",
+        guide="Dr. P. Sharma",
+        abstract="Comparative analysis of deep reinforcement learning systems.",
+        include_tables=False,
+        sections=[
+            DocumentSection(
+                title="System Comparison",
+                paragraphs=["Below is the narrative comparison."],
+            )
+        ],
+    )
+    doc_no_tables = docx.Document(str(seminar_template_path))
+    locked_no_tables = LockedTemplate(doc_no_tables, str(seminar_template_path), spec)
+    out_no_tables = tmp_path / "report_no_tables.docx"
+    engine.generate_from_plan(locked_no_tables, plan_no_tables, str(out_no_tables))
+    gen_doc_no_tables = docx.Document(str(out_no_tables))
+    assert len(gen_doc_no_tables.tables) == 0
+

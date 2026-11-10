@@ -59,6 +59,22 @@ INSTRUCTION_PATTERNS = [
         r"^\s*[\(\[]\s*(?:font|size|bold|italic|times\s+new\s+roman|write\s+approx|enter\s+|insert\s+|approx\.?\s*\d+\s*words).*[\)\]]\s*$",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"^\s*:\s*(?:upper|lower)case(?:\s+\w+)*\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*:\s*(?:[A-Za-z]+)\s+(?:paragraph|tent|content|heading)\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*\[(?:seminar topic|title|topic)\]\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*case\s*:\s*(?:uppercase|lowercase)\s*$",
+        re.IGNORECASE,
+    ),
 ]
 
 

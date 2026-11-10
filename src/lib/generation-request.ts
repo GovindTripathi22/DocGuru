@@ -19,6 +19,7 @@ export interface GenerationPromptOptions {
   enabledRuleIndexes?: number[];
   includeImages?: boolean;
   imageMode?: "off" | "search" | "placeholder";
+  includeTables?: boolean;
   author?: string;
   guide?: string;
   department?: string;
@@ -59,6 +60,7 @@ export function buildGenerationPayload(
       documentType !== "pptx" && options.mode.startsWith("create") && options.researchEnabled === true,
     include_images: options.imageMode === "off" ? false : options.includeImages ?? true,
     image_mode: options.imageMode ?? "search",
+    include_tables: options.includeTables ?? true,
   };
 
   if (documentType === "pptx") {
