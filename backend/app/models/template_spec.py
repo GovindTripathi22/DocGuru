@@ -214,3 +214,6 @@ class TemplateSpecification(BaseModel):
     document_text_summary: str | None = None
     style_hash: str = ""
     lock_status: LockStatus = Field(default_factory=LockStatus)
+    is_institutional_template: bool = False
+    body_anchor_index: int | None = None
+    parsed_typography_rules: dict[str, Any] = Field(default_factory=dict)

@@ -81,6 +81,9 @@ class DocxAnalyzer:
 
         # 8. Extract Rules, Guidelines, and Outline from Document Content
         extracted_rules, document_outline, doc_summary = self._extract_rules_and_outline(doc)
+        is_inst, typography_rules, body_anchor_idx = self._analyze_institutional_template(
+            doc, extracted_rules
+        )
 
         return TemplateSpecification(
             filename=filename,
@@ -102,6 +105,9 @@ class DocxAnalyzer:
             document_text_summary=doc_summary,
             style_hash=style_hash,
             lock_status=LockStatus(),
+            is_institutional_template=is_inst,
+            body_anchor_index=body_anchor_idx,
+            parsed_typography_rules=typography_rules,
         )
 
     def _extract_rules_and_outline(self, doc: DocumentObject):
@@ -150,6 +156,146 @@ class DocxAnalyzer:
 
         doc_summary = " | ".join(summary_paragraphs[:8])
         return extracted_rules, document_outline, doc_summary
+
+    def _analyze_institutional_template(
+        self, doc: DocumentObject, extracted_rules: list[str]
+    ) -> tuple[bool, dict[str, Any], int | None]:
+        """
+        Detects institutional / academic report formats (seminar reports, theses, project proposals)
+        that have structured front matter (Cover, Certificate, Acknowledgement) and explicit
+        typographic guidelines, identifying the body anchor where real chapters begin.
+        """
+        full_text_paras = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        full_text = "\n".join(full_text_paras)
+
+        has_front_matter = any(
+            kw in full_text.upper()
+            for kw in [
+                "SEMINAR REPORT",
+                "PROJECT REPORT",
+                "CERTIFICATE",
+                "ACKNOWLEDGEMENT",
+                "SUBMITTED BY NAME OF STUDENT",
+                "GUIDED BY",
+                "BONAFIDE WORK",
+                "BACHELOR OF TECH",
+                "DEPARTMENT OF COMPUTER",
+            ]
+        )
+        has_guidelines = bool(
+            re.search(r"font\s+style\s*:", full_text, re.I)
+            or re.search(r"line\s+spacing\s*:", full_text, re.I)
+            or re.search(r"formatting\s+tips\s*:", full_text, re.I)
+            or re.search(r"note:\s*chapter\s*1", full_text, re.I)
+        )
+
+        is_institutional = has_front_matter and (has_guidelines or len(doc.sections) > 1)
+        if not is_institutional:
+            return False, {}, None
+
+        h1_case = "uppercase" if re.search(r"case\s*:\s*uppercase", full_text, re.I) else "normal"
+
+        # Baseline typography rules
+        typography_rules = {
+            "heading1": {
+                "font_name": "Times New Roman",
+                "size_pt": 14.0,
+                "bold": True,
+                "line_spacing": 1.5,
+                "spacing_before_pt": 12.0,
+                "spacing_after_pt": 6.0,
+                "alignment": "center",
+                "case": h1_case,
+            },
+            "heading2": {
+                "font_name": "Times New Roman",
+                "size_pt": 12.0,
+                "bold": True,
+                "line_spacing": 1.5,
+                "spacing_before_pt": 6.0,
+                "spacing_after_pt": 6.0,
+                "alignment": "left",
+                "case": "titlecase",
+            },
+            "heading3": {
+                "font_name": "Times New Roman",
+                "size_pt": 12.0,
+                "bold": True,
+                "line_spacing": 1.5,
+                "spacing_before_pt": 6.0,
+                "spacing_after_pt": 6.0,
+                "alignment": "left",
+                "case": "titlecase",
+            },
+            "body": {
+                "font_name": "Times New Roman",
+                "size_pt": 12.0,
+                "bold": False,
+                "line_spacing": 1.5,
+                "spacing_before_pt": 0.0,
+                "spacing_after_pt": 6.0,
+                "alignment": "justify",
+                "case": "sentence",
+            },
+            "caption": {
+                "font_name": "Times New Roman",
+                "size_pt": 11.0,
+                "bold": False,
+                "line_spacing": 1.5,
+                "spacing_before_pt": 6.0,
+                "spacing_after_pt": 6.0,
+                "alignment": "center",
+                "case": "sentence",
+            },
+        }
+
+        # Dynamically refine font if explicitly stated
+        font_match = re.search(
+            r"(?:font\s+style|style)\s*:\s*([A-Za-z\s]+?)(?:\s*\(|\s+size|\s+spacing|\n|$)",
+            full_text,
+            re.I,
+        )
+        if font_match:
+            detected_font = font_match.group(1).strip()
+            if "times" in detected_font.lower():
+                detected_font = "Times New Roman"
+            for k in typography_rules:
+                typography_rules[k]["font_name"] = detected_font
+
+        # Dynamically refine line spacing if explicitly stated
+        ls_match = re.search(r"line\s+spacing\s*:\s*([0-9.]+)", full_text, re.I)
+        if ls_match:
+            try:
+                ls_val = float(ls_match.group(1))
+                for k in typography_rules:
+                    typography_rules[k]["line_spacing"] = ls_val
+            except ValueError:
+                pass
+
+        # Locate body anchor index (where Chapter 1 starts)
+        body_anchor_idx = None
+        for i, p in enumerate(doc.paragraphs):
+            t = p.text.strip().upper()
+            if re.search(r"NOTE:\s*CHAPTER\s*1\s*WILL\s*START", t, re.I) or t in (
+                "INTRODUCTION",
+                "1. INTRODUCTION",
+                "CHAPTER 1",
+                "CHAPTER 1: INTRODUCTION",
+            ):
+                body_anchor_idx = i
+                break
+
+        if body_anchor_idx is None:
+            found_prelim = False
+            for i, p in enumerate(doc.paragraphs):
+                t = p.text.strip().upper()
+                if "TABLE OF CONTENT" in t or "ABSTRACT" in t:
+                    found_prelim = True
+                if found_prelim and p._p.xpath("./w:pPr/w:sectPr"):
+                    body_anchor_idx = i + 1
+                    break
+
+        return is_institutional, typography_rules, body_anchor_idx
 
     def _extract_page_spec(self, doc: DocumentObject) -> PageSpec:
         if not doc.sections:

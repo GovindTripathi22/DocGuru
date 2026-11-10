@@ -1,15 +1,17 @@
 import copy
 import difflib
 import logging
+import re
 import unicodedata
 from pathlib import Path
 from typing import Any, cast
 
 from docx import Document
 from docx.document import Document as DocumentObject
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
 
@@ -60,12 +62,60 @@ class DocxEngine:
         try:
             return doc.styles[style_name]
         except (KeyError, TypeError):
-            for candidate in (style_name.replace(" ", ""), style_name.lower(), style_name.title()):
-                try:
-                    return doc.styles[candidate]
-                except (KeyError, TypeError):
-                    pass
+            clean_id = style_name.replace(" ", "").lower()
+            for s in doc.styles:
+                if s.name.lower() == style_name.lower():
+                    return s
+                if hasattr(s, "style_id") and s.style_id and s.style_id.lower() == clean_id:
+                    return s
         return None
+
+    @staticmethod
+    def _apply_typography_rules(
+        paragraph: Paragraph,
+        role: str,
+        locked_doc: LockedTemplate,
+    ) -> None:
+        spec = locked_doc.spec
+        if not spec or not getattr(spec, "parsed_typography_rules", None):
+            return
+        rules = spec.parsed_typography_rules.get(role)
+        if not rules:
+            return
+
+        font_name = rules.get("font_name")
+        size_pt = rules.get("size_pt")
+        bold = rules.get("bold")
+        line_spacing = rules.get("line_spacing")
+        space_before_pt = rules.get("spacing_before_pt")
+        space_after_pt = rules.get("spacing_after_pt")
+        alignment = rules.get("alignment")
+
+        if line_spacing is not None:
+            paragraph.paragraph_format.line_spacing = line_spacing
+        if space_before_pt is not None:
+            paragraph.paragraph_format.space_before = Pt(space_before_pt)
+        if space_after_pt is not None:
+            paragraph.paragraph_format.space_after = Pt(space_after_pt)
+
+        if alignment:
+            align_lower = alignment.lower()
+            if "center" in align_lower:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif "justify" in align_lower:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            elif "right" in align_lower:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            elif "left" in align_lower:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        for r in paragraph.runs:
+            if font_name:
+                r.font.name = font_name
+            if size_pt is not None:
+                r.font.size = Pt(size_pt)
+            if bold is not None:
+                r.bold = bold
 
     def insert_heading(
         self,
@@ -79,11 +129,26 @@ class DocxEngine:
             locked_doc.validate_style_allowed(requested_style) if requested_style else None
         )
 
+        role = "heading1"
+        if requested_style:
+            req_lower = requested_style.lower()
+            if "heading 2" in req_lower or "sub" in req_lower:
+                role = "heading2"
+            elif "heading 3" in req_lower:
+                role = "heading3"
+            elif "title" in req_lower:
+                role = "heading1"
+
+        spec_rules = getattr(locked_doc.spec, "parsed_typography_rules", {})
+        if role == "heading1" and spec_rules.get("heading1", {}).get("case") == "uppercase":
+            text = text.upper()
+
         if validated_style:
             st = self._resolve_style(doc, validated_style)
             if st is not None:
                 try:
                     p = doc.add_paragraph(text, style=st)
+                    self._apply_typography_rules(p, role, locked_doc)
                     self._apply_multilingual_properties(p, text, locked_doc)
                     return p
                 except (KeyError, TypeError, ValueError):
@@ -99,6 +164,7 @@ class DocxEngine:
         p = doc.add_paragraph()
         run = p.add_run(text)
         run.bold = True
+        self._apply_typography_rules(p, role, locked_doc)
         self._apply_multilingual_properties(p, text, locked_doc)
         return p
 
@@ -119,6 +185,7 @@ class DocxEngine:
             if st is not None:
                 try:
                     paragraph = doc.add_paragraph(text, style=st)
+                    self._apply_typography_rules(paragraph, "body", locked_doc)
                     self._apply_multilingual_properties(paragraph, text, locked_doc)
                     return paragraph
                 except (KeyError, TypeError, ValueError):
@@ -127,6 +194,7 @@ class DocxEngine:
                 warnings.append(f"paragraph_style_fallback:{validated_style}")
 
         paragraph = doc.add_paragraph(text)
+        self._apply_typography_rules(paragraph, "body", locked_doc)
         self._apply_multilingual_properties(paragraph, text, locked_doc)
         return paragraph
 
@@ -437,11 +505,13 @@ class DocxEngine:
 
         if caption:
             p_cap = doc.add_paragraph(caption)
+            self._apply_typography_rules(p_cap, "caption", locked_doc)
             self._apply_multilingual_properties(p_cap, caption, locked_doc)
             try:
                 p_cap.style = doc.styles["Caption"]
             except KeyError:
-                p_cap.runs[0].italic = True
+                if p_cap.runs:
+                    p_cap.runs[0].italic = True
         return p
 
     def replace_placeholders_preserving_runs(
@@ -745,6 +815,300 @@ class DocxEngine:
             markers = " ".join(f"[{number}]" for number in valid_numbers)
             self.insert_paragraph(locked_doc, markers)
 
+    def _inhabit_institutional_front_matter(
+        self,
+        doc: DocumentObject,
+        plan: DocumentPlan,
+        author: str,
+        guide: str,
+        warnings: list[str] | None = None,
+    ) -> int:
+        title = plan.title or "Document Title"
+        replacements = 0
+
+        title_exact = {
+            "t i t l e", "title", "title of seminar/project", "title of seminar/project.",
+            "[seminar topic]", "[title]", "project title", "seminar topic", "<title>"
+        }
+
+        def process_para(p: Paragraph) -> None:
+            nonlocal replacements
+            t_raw = p.text
+            t_strip = t_raw.strip()
+            t_lower = t_strip.lower()
+
+            if t_lower in title_exact:
+                p.text = title
+                replacements += 1
+                return
+
+            if "title of seminar" in t_lower:
+                p.text = re.sub(
+                    r'["\u201c\u2018\u00ab\u201d\u2019\u00bb]?Title of Seminar/[^"\u201d\u2019\u00bb\n]+["\u201c\u2018\u00ab\u201d\u2019\u00bb]?',
+                    f'"{title}"',
+                    p.text,
+                    flags=re.IGNORECASE,
+                )
+                replacements += 1
+
+            if "[seminar topic]" in t_lower:
+                p.text = p.text.replace("[Seminar Topic]", title).replace("[seminar topic]", title)
+                replacements += 1
+
+            if "submitted by name of student" in t_lower:
+                p.text = re.sub(
+                    r"Submitted\s+By\s+Name\s+of\s+Student",
+                    f"Submitted By {author}",
+                    p.text,
+                    flags=re.IGNORECASE,
+                )
+                replacements += 1
+            elif t_lower in ("name of student", "name") and any(
+                k in t_raw.lower() for k in ("submitted by", "by", "student", "roll", "reg")
+            ):
+                p.text = author
+                replacements += 1
+            elif t_lower == "name of student":
+                p.text = author
+                replacements += 1
+
+            if "name of guide" in t_lower:
+                p.text = re.sub(r"Name\s+of\s+Guide", guide, p.text, flags=re.IGNORECASE)
+                replacements += 1
+            if "dr./prof./guide name" in t_lower:
+                p.text = re.sub(r"Dr\./Prof\./Guide\s+Name", guide, p.text, flags=re.IGNORECASE)
+                replacements += 1
+            if "prof. name\t" in t_lower or "prof. name " in t_lower:
+                p.text = re.sub(r"Prof\.\s*Name", guide, p.text, flags=re.IGNORECASE)
+                replacements += 1
+
+        for p in doc.paragraphs[:100]:
+            process_para(p)
+
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        process_para(p)
+
+        return replacements
+
+    def _inhabit_abstract(
+        self,
+        doc: DocumentObject,
+        plan: DocumentPlan,
+        typography_rules: dict[str, Any],
+        body_anchor_idx: int | None = None,
+    ) -> None:
+        abstract_idx = None
+        toc_idx = None
+
+        for i, p in enumerate(doc.paragraphs):
+            t = p.text.strip().upper()
+            if t == "ABSTRACT" and abstract_idx is None:
+                abstract_idx = i
+            elif ("TABLE OF CONTENT" in t or "TABLE OF CONTENTS" in t) and toc_idx is None:
+                toc_idx = i
+            if abstract_idx is not None and toc_idx is not None:
+                break
+
+        if abstract_idx is None:
+            return
+
+        end_abstract = (
+            toc_idx if toc_idx else (body_anchor_idx if body_anchor_idx else abstract_idx + 25)
+        )
+        abstract_text = (
+            plan.abstract
+            or plan.conclusion
+            or f"This report presents an in-depth investigation into {plan.title}."
+        )
+
+        body_rules = typography_rules.get("body", {})
+        font_name = body_rules.get("font_name", "Times New Roman")
+        size_pt = body_rules.get("size_pt", 12.0)
+        line_spacing = body_rules.get("line_spacing", 1.5)
+
+        for p in doc.paragraphs[abstract_idx + 1 : end_abstract]:
+            t = p.text.strip()
+            has_sectPr = bool(p._p.xpath("./w:pPr/w:sectPr"))
+            if t.lower().startswith("abstract -") or "context/relevance" in t.lower():
+                p.text = abstract_text
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                p.paragraph_format.line_spacing = line_spacing
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(6)
+                for r in p.runs:
+                    r.font.name = font_name
+                    r.font.size = Pt(size_pt)
+            elif any(
+                kw in t.lower()
+                for kw in [
+                    "font style:",
+                    "spacing:",
+                    "font size:",
+                    "style: times",
+                    "case: lower",
+                    "case: upper",
+                    "re & after",
+                    "act paragraph",
+                    "size:-14",
+                    "size:-12",
+                ]
+            ):
+                if has_sectPr:
+                    for sub in list(p._p):
+                        if not sub.tag.endswith("pPr"):
+                            p._p.remove(sub)
+                else:
+                    p.text = ""
+
+    def _inhabit_table_of_contents(
+        self,
+        doc: DocumentObject,
+        body_anchor_idx: int | None = None,
+    ) -> None:
+        toc_idx = None
+        for i, p in enumerate(doc.paragraphs):
+            t = p.text.strip().upper()
+            if ("TABLE OF CONTENT" in t or "TABLE OF CONTENTS" in t) and toc_idx is None:
+                toc_idx = i
+                break
+
+        if toc_idx is None:
+            return
+
+        end_toc = body_anchor_idx if body_anchor_idx else toc_idx + 25
+        for p in doc.paragraphs[toc_idx + 1 : end_toc]:
+            t = p.text.strip()
+            has_sectPr = bool(p._p.xpath("./w:pPr/w:sectPr"))
+            if any(
+                kw in t.lower()
+                for kw in [
+                    "font style:",
+                    "spacing:",
+                    "font size:",
+                    "style: times",
+                    "case: lower",
+                    "case: upper",
+                    "re & after",
+                    "heading should be",
+                    "pages till index",
+                    "size:-14",
+                    "size:-12",
+                ]
+            ):
+                if has_sectPr:
+                    for sub in list(p._p):
+                        if not sub.tag.endswith("pPr"):
+                            p._p.remove(sub)
+                else:
+                    p.text = ""
+
+    def _purge_and_inhabit_institutional_body(
+        self,
+        locked_doc: LockedTemplate,
+        plan: DocumentPlan,
+        anchor_idx: int,
+        warnings: list[str] | None = None,
+        source_numbers: dict[str, int] | None = None,
+    ) -> None:
+        doc = locked_doc.doc
+        body = doc._body._body
+        body_children = list(body)
+
+        anchor_elem = (
+            doc.paragraphs[anchor_idx]._p
+            if anchor_idx is not None and anchor_idx < len(doc.paragraphs)
+            else None
+        )
+        anchor_pos = (
+            body_children.index(anchor_elem)
+            if anchor_elem in body_children
+            else len(body_children) - 1
+        )
+
+        saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
+
+        # Purge dummy sample content and tips from anchor_pos onwards
+        for child in body_children[anchor_pos:]:
+            tag = child.tag.split("}")[-1]
+            if tag == "p":
+                has_sectPr = bool(child.xpath("./w:pPr/w:sectPr"))
+                if has_sectPr:
+                    # Strip runs and drawings, keep sectPr
+                    for sub in list(child):
+                        if not sub.tag.endswith("pPr"):
+                            child.remove(sub)
+                else:
+                    try:
+                        body.remove(child)
+                    except ValueError:
+                        pass
+            elif tag == "tbl":
+                try:
+                    body.remove(child)
+                except ValueError:
+                    pass
+
+        # Render sections in order
+        for idx, section in enumerate(plan.sections, start=1):
+            stitle = section.title
+            if not stitle.upper().startswith("CHAPTER") and not re.match(r"^\d+\.", stitle):
+                formatted_title = f"CHAPTER {idx}: {stitle.upper()}"
+            else:
+                formatted_title = stitle
+
+            self.insert_heading(
+                locked_doc,
+                formatted_title,
+                requested_style="Heading 1",
+                warnings=warnings,
+            )
+
+            for p_text in section.paragraphs:
+                self.insert_paragraph(locked_doc, p_text, warnings=warnings)
+
+            for b_text in section.bullets:
+                self.insert_bullet_point(locked_doc, b_text, warnings=warnings)
+
+            if section.table_data and (section.table_data.headers or section.table_data.rows):
+                self.insert_cloned_table(
+                    locked_doc,
+                    headers=section.table_data.headers,
+                    rows=section.table_data.rows,
+                    saved_table_xmls=saved_table_xmls,
+                    source_table_index=section.table_data.source_table_index,
+                )
+
+            if section.image_path:
+                self.insert_image(
+                    locked_doc,
+                    section.image_path,
+                    caption=section.image_caption,
+                )
+
+            for sub in section.subsections:
+                self.insert_heading(
+                    locked_doc,
+                    sub.title,
+                    requested_style="Heading 2",
+                    warnings=warnings,
+                )
+                for sub_p in sub.paragraphs:
+                    self.insert_paragraph(locked_doc, sub_p, warnings=warnings)
+                for sub_b in sub.bullets:
+                    self.insert_bullet_point(locked_doc, sub_b, warnings=warnings)
+
+            valid_numbers = [
+                source_numbers[item]
+                for item in section.citations
+                if source_numbers and item in source_numbers
+            ]
+            if valid_numbers:
+                markers = " ".join(f"[{number}]" for number in valid_numbers)
+                self.insert_paragraph(locked_doc, markers)
+
     def generate_from_plan(
         self,
         locked_doc: LockedTemplate,
@@ -805,7 +1169,33 @@ class DocxEngine:
             source.id: index for index, source in enumerate(referenced_sources, start=1)
         }
 
-        if template_mode == "fill":
+        # Check if template is an institutional format (seminar report, thesis, proposal)
+        anchor_idx = body_anchor_index or getattr(locked_doc.spec, "body_anchor_index", None)
+        is_inst = getattr(locked_doc.spec, "is_institutional_template", False) or (
+            anchor_idx is not None and is_structured and replacements_count == 0
+        )
+
+        if is_inst and template_mode != "append":
+            # Institutional Inhabitation mode: populate front matter, strip rules, inhabit chapters at anchor
+            author_name = getattr(plan, "author", None) or "Student Name"
+            guide_name = getattr(plan, "guide", None) or "Faculty Guide"
+            self._inhabit_institutional_front_matter(
+                doc, plan, author_name, guide_name, warnings=warnings
+            )
+
+            typography_rules = getattr(locked_doc.spec, "parsed_typography_rules", {})
+            self._inhabit_abstract(doc, plan, typography_rules, anchor_idx)
+            self._inhabit_table_of_contents(doc, anchor_idx)
+
+            effective_anchor = anchor_idx if anchor_idx is not None else 0
+            self._purge_and_inhabit_institutional_body(
+                locked_doc=locked_doc,
+                plan=plan,
+                anchor_idx=effective_anchor,
+                warnings=warnings,
+                source_numbers=source_numbers,
+            )
+        elif template_mode == "fill":
             # Fill mode: keep existing structure, placeholders already replaced
             saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
             for s in plan.sections:

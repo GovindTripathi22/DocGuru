@@ -88,6 +88,9 @@ class ThemeOverrideRequest(BaseModel):
 class DocumentPlan(BaseModel):
     title: str
     target_audience: str | None = "Professional / Academic"
+    author: str | None = None
+    guide: str | None = None
+    academic_year: str | None = None
     sections: list[DocumentSection] = Field(default_factory=list)
     conclusion: str | None = None
     abstract: str | None = None
@@ -142,6 +145,8 @@ class GenerationRequest(BaseModel):
     image_mode: Literal["off", "search", "placeholder", "auto", "generate"] = "search"
     template_mode: Literal["auto", "fill", "append", "replace_body"] = "auto"
     body_anchor_index: int | None = None
+    author: str | None = None
+    guide: str | None = None
     overrides: list[ThemeOverrideRequest] = Field(default_factory=list)
     edit_target_index: int | None = Field(default=None, ge=0)
     edit_target_heading: str | None = None

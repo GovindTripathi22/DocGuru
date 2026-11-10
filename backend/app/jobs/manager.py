@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from typing import Any, Literal
@@ -84,6 +85,38 @@ class JobManager:
         if self._semaphore is None:
             self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_JOBS)
         return self._semaphore
+
+    @staticmethod
+    def _extract_author_and_guide(text: str) -> tuple[str | None, str | None]:
+        author, guide = None, None
+        m_author = re.search(
+            r"\b(?:by|author|student):\s*([A-Za-z\s.]+?)(?:\s+guided|\s+guide|\s+under|\n|$)",
+            text,
+            re.I,
+        )
+        if not m_author:
+            m_author = re.search(
+                r"\b(?:submitted\s+by|by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+                text,
+            )
+        if m_author:
+            author = m_author.group(1).strip()
+
+        m_guide = re.search(
+            r"\b(?:guided\s+by|guide|advisor):\s*([A-Za-z\s.]+?)(?:\n|$)",
+            text,
+            re.I,
+        )
+        if not m_guide:
+            m_guide = re.search(
+                r"\b(?:guided\s+by|under\s+guidance\s+of)\s+((?:Dr\.|Prof\.)?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+                text,
+                re.I,
+            )
+        if m_guide:
+            guide = m_guide.group(1).strip()
+
+        return author, guide
 
     def _save_job_snapshot(self, job: JobProgress) -> None:
         try:
@@ -400,6 +433,15 @@ class JobManager:
         self._save_job_snapshot(job)
 
         if spec.document_type == "docx":
+            if hasattr(plan, "author"):
+                detected_author, detected_guide = self._extract_author_and_guide(
+                    f"{req.prompt} {req.custom_instructions or ''}"
+                )
+                if not plan.author:
+                    plan.author = req.author or detected_author or "Student Name"
+                if not plan.guide:
+                    plan.guide = req.guide or detected_guide or "Faculty Guide"
+
             await anyio.to_thread.run_sync(
                 lambda: self.executor.execute_docx(
                     template_path=str(template_path),
