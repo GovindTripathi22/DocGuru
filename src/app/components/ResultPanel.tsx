@@ -626,18 +626,27 @@ export function ResultPanel({
       )}
 
       {/* Warnings if any */}
-      {result.warnings && result.warnings.length > 0 && (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 space-y-2 text-xs text-amber-900 shadow-sm">
-          <div className="flex items-center gap-2 font-bold text-amber-800">
-            <AlertTriangle className="h-4 w-4 text-amber-600" /> Warnings
+      {(() => {
+        const visibleWarnings = (result.warnings || []).filter(
+          (w) =>
+            !w.startsWith("long_sentence_split_at_") &&
+            !w.startsWith("heading_style_fallback:") &&
+            !w.startsWith("paragraph_style_fallback:"),
+        );
+        if (visibleWarnings.length === 0) return null;
+        return (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 space-y-2 text-xs text-amber-900 shadow-sm">
+            <div className="flex items-center gap-2 font-bold text-amber-800">
+              <AlertTriangle className="h-4 w-4 text-amber-600" /> Warnings
+            </div>
+            <ul className="list-disc pl-5 space-y-1">
+              {visibleWarnings.map((w, idx) => (
+                <li key={idx}>{w}</li>
+              ))}
+            </ul>
           </div>
-          <ul className="list-disc pl-5 space-y-1">
-            {result.warnings.map((w, idx) => (
-              <li key={idx}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         {onEditPrompt && (

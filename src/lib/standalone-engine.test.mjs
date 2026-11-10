@@ -101,3 +101,61 @@ test("enhancePromptStandalone expands short prompts deterministically when no AP
   assert.match(enhanced.enhanced_prompt, /Quarterly security review/);
   assert.match(enhanced.enhanced_prompt, /presentation deck/i);
 });
+
+test("institutional seminar report template keeps front matter, removes formatting tips, and replaces chapters in-place", () => {
+  const preset = getSampleTemplatePreset("executive-docx");
+  const entries = readZipEntries(preset.buffer);
+  const seminarDocXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p><w:r><w:t>A SEMINAR REPORT ON</w:t></w:r></w:p>
+    <w:p><w:r><w:t>&lt;Title&gt;</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Formatting Tips: Font Style: Times New Roman(Bold), 14 Pt, Capital, Center Aligned</w:t></w:r></w:p>
+    <w:p><w:r><w:t>SUBMITTED BY</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Name of Student</w:t></w:r></w:p>
+    <w:p><w:r><w:t>GUIDED BY</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Prof. Guide Name</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>CERTIFICATE</w:t></w:r></w:p>
+    <w:p><w:r><w:t>This is to certify that &lt;Student Name&gt; completed the seminar under &lt;Guide Name&gt;.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>ABSTRACT</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Formatting Rule: Write 150 words in Times New Roman, 12 Pt, 1.5 line spacing.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>TABLE OF CONTENT</w:t></w:r></w:p>
+    <w:p><w:r><w:t>1. Introduction .......................... 1</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>CHAPTER 1: INTRODUCTION</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Note: Chapter 1 will be introduction part.</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Dummy sample chapter text that must be replaced in-place.</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840" w:orient="portrait"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+  </w:body>
+</w:document>`;
+  entries.set("word/document.xml", Buffer.from(seminarDocXml, "utf8"));
+  const seminarBuffer = buildZipArchive(entries);
+
+  const analyzed = analyzeTemplateBuffer("seminar-report-template.docx", seminarBuffer);
+  assert.equal(analyzed.template_spec.is_institutional_template, true);
+  assert.ok((analyzed.template_spec.body_anchor_index ?? -1) > 0);
+  assert.equal(analyzed.template_spec.parsed_typography_rules?.font_family, "Times New Roman");
+
+  const { result } = executeStandaloneGeneration({
+    template_id: analyzed.template_id,
+    prompt: "Federated Learning for Edge IoT Security",
+    author: "Aarav Sharma",
+    guide: "Dr. R. K. Deshmukh",
+    department: "Computer Engineering",
+  });
+
+  const outRecord = getStandaloneOutput(result.output_filename);
+  assert.ok(outRecord);
+  const outXml = readZipEntries(outRecord.buffer).get("word/document.xml")?.toString("utf8") || "";
+
+  // Front matter is preserved and populated
+  assert.match(outXml, /CERTIFICATE/);
+  assert.match(outXml, /Aarav Sharma/);
+  assert.match(outXml, /Dr\. R\. K\. Deshmukh/);
+  // Embedded instructions and old sample chapter prose are removed
+  assert.doesNotMatch(outXml, /Formatting Tips: Font Style/);
+  assert.doesNotMatch(outXml, /Note: Chapter 1 will be introduction part/);
+  assert.doesNotMatch(outXml, /Dummy sample chapter text that must be replaced/);
+  // Chapters are formatted with Times New Roman and CHAPTER prefix
+  assert.match(outXml, /Times New Roman/);
+  assert.match(outXml, /CHAPTER 1:/);
+});

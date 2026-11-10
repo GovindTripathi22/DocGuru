@@ -90,6 +90,8 @@ class DocumentPlan(BaseModel):
     target_audience: str | None = "Professional / Academic"
     author: str | None = None
     guide: str | None = None
+    department: str | None = None
+    institution: str | None = None
     academic_year: str | None = None
     sections: list[DocumentSection] = Field(default_factory=list)
     conclusion: str | None = None
@@ -145,8 +147,11 @@ class GenerationRequest(BaseModel):
     image_mode: Literal["off", "search", "placeholder", "auto", "generate"] = "search"
     template_mode: Literal["auto", "fill", "append", "replace_body"] = "auto"
     body_anchor_index: int | None = None
-    author: str | None = None
-    guide: str | None = None
+    author: str | None = Field(default=None, max_length=200)
+    guide: str | None = Field(default=None, max_length=200)
+    department: str | None = Field(default=None, max_length=200)
+    institution: str | None = Field(default=None, max_length=200)
+    academic_year: str | None = Field(default=None, max_length=50)
     overrides: list[ThemeOverrideRequest] = Field(default_factory=list)
     edit_target_index: int | None = Field(default=None, ge=0)
     edit_target_heading: str | None = None

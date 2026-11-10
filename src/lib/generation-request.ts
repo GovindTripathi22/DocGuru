@@ -19,9 +19,20 @@ export interface GenerationPromptOptions {
   enabledRuleIndexes?: number[];
   includeImages?: boolean;
   imageMode?: "off" | "search" | "placeholder";
+  author?: string;
+  guide?: string;
+  department?: string;
+  institution?: string;
+  academicYear?: string;
 }
 
-export type GenerationRequestPayload = components["schemas"]["GenerationRequest"];
+export type GenerationRequestPayload = components["schemas"]["GenerationRequest"] & {
+  author?: string | null;
+  guide?: string | null;
+  department?: string | null;
+  institution?: string | null;
+  academic_year?: string | null;
+};
 
 export function buildGenerationPayload(
   templateId: string,
@@ -64,5 +75,10 @@ export function buildGenerationPayload(
 
   if (options.customInstructions) payload.custom_instructions = options.customInstructions;
   if (options.enabledRuleIndexes !== undefined) payload.enabled_rule_indices = options.enabledRuleIndexes;
+  if (options.author?.trim()) payload.author = options.author.trim();
+  if (options.guide?.trim()) payload.guide = options.guide.trim();
+  if (options.department?.trim()) payload.department = options.department.trim();
+  if (options.institution?.trim()) payload.institution = options.institution.trim();
+  if (options.academicYear?.trim()) payload.academic_year = options.academicYear.trim();
   return payload;
 }

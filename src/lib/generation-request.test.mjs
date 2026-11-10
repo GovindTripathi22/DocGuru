@@ -81,3 +81,22 @@ test("sends only the server-resolved indexes for enabled template rules", () => 
 
   assert.deepEqual(payload.enabled_rule_indices, [0, 2]);
 });
+
+test("forwards optional seminar metadata fields when provided", () => {
+  const payload = buildGenerationPayload("template-id", "docx", {
+    prompt: "Write a seminar report on autonomous agents",
+    mode: "create_document",
+    detailLevel: "medium",
+    author: "Aarav Sharma",
+    guide: "Dr. R. K. Deshmukh",
+    department: "Computer Engineering",
+    institution: "PICT Pune",
+    academicYear: "2025-2026",
+  });
+
+  assert.equal(payload.author, "Aarav Sharma");
+  assert.equal(payload.guide, "Dr. R. K. Deshmukh");
+  assert.equal(payload.department, "Computer Engineering");
+  assert.equal(payload.institution, "PICT Pune");
+  assert.equal(payload.academic_year, "2025-2026");
+});

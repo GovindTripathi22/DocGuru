@@ -516,25 +516,104 @@ startxref
 
 export function getSampleTemplatePreset(presetId: SamplePresetId): {
   filename: string;
+  documentType: "docx" | "pptx" | "pdf";
   buffer: Buffer;
 } {
   switch (presetId) {
     case "executive-docx":
       return {
         filename: "executive-architecture-report.docx",
+        documentType: "docx",
         buffer: createSampleDocxBuffer(),
       };
     case "strategy-pptx":
       return {
         filename: "quarterly-strategy-briefing.pptx",
+        documentType: "pptx",
         buffer: createSamplePptxBuffer(),
       };
     case "reference-pdf":
       return {
         filename: "ieee-systems-specification.pdf",
+        documentType: "pdf",
         buffer: createSamplePdfBuffer(),
       };
   }
+}
+
+const INSTRUCTION_REGEXES: RegExp[] = [
+  /^formatting\s*(?:rule|tips|guidelines|instructions)\s*[:\-]?/i,
+  /^guideline[s]?\s*[:\-]/i,
+  /^instruction[s]?\s*[:\-]/i,
+  /^font\s*style\s*[:\-]/i,
+  /^font\s*(?:size|family|type)\s*[:\-]/i,
+  /^line\s*spacing\s*[:\-]/i,
+  /^margin[s]?\s*[:\-]/i,
+  /^page\s*number[s]?\s*[:\-]/i,
+  /^alignment\s*[:\-]/i,
+  /^note\s*:\s*(?:chapter|section|the\s+heading|use\s+|all\s+|do\s+not|font|keep|replace|remove|delete|write)/i,
+  /^tip[s]?\s*[:\-]/i,
+  /\b(?:must|should)\s+be\s+(?:in\s+)?(?:times\s+new\s+roman|arial|calibri|aptos|\d+\s*pt\b|bold|italic|capital|uppercase|justified|centered|left\s+aligned)/i,
+  /\b(?:times\s+new\s+roman|arial|calibri)\s*,\s*\d+\s*pt\b/i,
+  /\b\d+\s*pt\s*,\s*(?:bold|italic|capital|uppercase|justified|centered|left\s+aligned|line\s+spacing)/i,
+  /\bline\s+spacing\s+(?:should\s+be\s+|of\s+)?1\.5\b/i,
+  /\bthe\s+heading\s+of\s+each\s+section\s+should\s+be\b/i,
+  /\bchapter\s+\d+\s+will\s+be\s+introduction\s+part\b/i,
+  /\brest\s+of\s+the\s+section\s+depends\s+on\s+your\s+topic\b/i,
+  /\bwrite\s+(?:minimum|maximum|at\s+least|about)\s+\d+\s+(?:words|lines|pages|paragraphs)\b/i,
+  /\bdo\s+not\s+(?:change|modify|delete|include)\s+the\s+(?:format|font|margins|header|footer)\b/i,
+];
+
+export function isInstructionOrRuleText(text: string): boolean {
+  const clean = text.trim();
+  if (!clean || clean.length > 420) return false;
+  return INSTRUCTION_REGEXES.some((rx) => rx.test(clean));
+}
+
+function parseTypographyRulesFromTexts(
+  texts: string[],
+  defaultFont: string,
+): Record<string, string | number | boolean> {
+  const fullText = texts.join("\n");
+  const rules: Record<string, string | number | boolean> = {
+    font_family: /times\s+new\s+roman/i.test(fullText) ? "Times New Roman" : defaultFont || "Times New Roman",
+    heading1_size_pt: 14,
+    heading1_bold: true,
+    heading1_uppercase: true,
+    heading1_align: "center",
+    heading2_size_pt: 12,
+    heading2_bold: true,
+    heading2_align: "left",
+    body_size_pt: 12,
+    body_align: "justify",
+    line_spacing: 1.5,
+    caption_size_pt: 11,
+  };
+
+  for (const t of texts) {
+    const lower = t.toLowerCase();
+    const ptMatches = Array.from(lower.matchAll(/(\d+)\s*pt/g)).map((m) => Number(m[1]));
+    if (ptMatches.length > 0) {
+      if (lower.includes("heading") || lower.includes("chapter") || lower.includes("title")) {
+        if (lower.includes("sub") || lower.includes("section")) {
+          rules.heading2_size_pt = ptMatches[0];
+        } else {
+          rules.heading1_size_pt = ptMatches[0];
+        }
+      } else if (lower.includes("figure") || lower.includes("table") || lower.includes("caption")) {
+        rules.caption_size_pt = ptMatches[0];
+      } else if (lower.includes("body") || lower.includes("content") || lower.includes("paragraph") || lower.includes("text")) {
+        rules.body_size_pt = ptMatches[0];
+      }
+    }
+    if (lower.includes("1.5") && (lower.includes("spacing") || lower.includes("line"))) {
+      rules.line_spacing = 1.5;
+    } else if ((lower.includes("double") || lower.includes("2.0")) && lower.includes("spacing")) {
+      rules.line_spacing = 2.0;
+    }
+  }
+
+  return rules;
 }
 
 // --- Analyzer & Fingerprinter ---
@@ -588,6 +667,7 @@ function computeCombinedStyleHash(componentHashes: Record<string, string>, fallb
 export function analyzeTemplateBuffer(
   originalFilename: string,
   buffer: Buffer,
+  overrideTemplateId?: string,
 ): TemplateUploadResponse {
   const cleanName = originalFilename.replace(/[^\w.\- ()]/g, "_").trim() || "template.docx";
   const ext = cleanName.split(".").pop()?.toLowerCase();
@@ -599,7 +679,7 @@ export function analyzeTemplateBuffer(
     throw new Error("File exceeds the 25 MB upload limit.");
   }
 
-  const templateId = `${crypto.randomUUID().replace(/-/g, "")}.${ext}`;
+  const templateId = overrideTemplateId || `${crypto.randomUUID().replace(/-/g, "")}.${ext}`;
   const zipEntries = ext === "pdf" ? new Map<string, Buffer>() : readZipEntries(buffer);
 
   if ((ext === "docx" || ext === "pptx") && zipEntries.size === 0) {
@@ -626,6 +706,7 @@ export function analyzeTemplateBuffer(
     // Fonts
     const fontMatches = [
       ...Array.from(stylesXml.matchAll(/w:ascii="([^"]+)"/g)).map((m) => m[1]),
+      ...Array.from(docXml.matchAll(/w:ascii="([^"]+)"/g)).map((m) => m[1]),
       ...Array.from(themeXml.matchAll(/typeface="([^"]+)"/g)).map((m) => m[1]),
     ].filter((f) => f && !f.startsWith("+"));
     const uniqueFonts = Array.from(new Set(fontMatches.length ? fontMatches : ["Aptos", "Aptos Display"]));
@@ -665,19 +746,78 @@ export function analyzeTemplateBuffer(
       if (m) colorScheme[tag] = `#${m[1].toUpperCase()}`;
     }
 
-    // Paragraphs -> outline & rules
+    // Paragraphs -> outline, rules & institutional detection
     const paragraphs = Array.from(docXml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)).map((m) => m[0]);
+    const paraTexts = paragraphs.map((pXml) => stripXmlTags(pXml));
     const outline: string[] = [];
     const rules: string[] = [];
-    for (const pXml of paragraphs) {
-      const text = stripXmlTags(pXml);
+    const instKeywords = [
+      "certificate",
+      "acknowledgement",
+      "abstract",
+      "table of content",
+      "department of",
+      "submitted by",
+      "guided by",
+      "seminar report",
+      "project report",
+      "bachelor of",
+    ];
+    const fullLower = paraTexts.join(" \n ").toLowerCase();
+    const matchedInstCount = instKeywords.filter((kw) => fullLower.includes(kw)).length;
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const pXml = paragraphs[i];
+      const text = paraTexts[i];
       if (!text) continue;
-      if (/w:val="Heading[1-3]"/i.test(pXml) && !text.includes("...")) {
+      if (isInstructionOrRuleText(text)) {
+        const cleanedRule = text.replace(/^Formatting Rule:\s*/i, "").trim();
+        if (cleanedRule && !rules.includes(cleanedRule)) {
+          rules.push(cleanedRule);
+        }
+        continue;
+      }
+      const isTocEntry = text.includes("...") || /\t\d+$/.test(text) || /\s{3,}\d+$/.test(text);
+      if (
+        !isTocEntry &&
+        (/w:val="Heading[1-3]"/i.test(pXml) ||
+          /^(?:CHAPTER\s+\d+|1\.\s+INTRODUCTION|[1-9]\.\s+[A-Z])/i.test(text))
+      ) {
         outline.push(text);
-      } else if (/(?:formatting rule|guideline|must use|font style|margins:|citations)/i.test(text)) {
-        rules.push(text.replace(/^Formatting Rule:\s*/i, ""));
       }
     }
+
+    // Locate body_anchor_index (first body chapter heading after front-matter sections)
+    let lastFrontMatterIdx = -1;
+    for (let i = 0; i < paraTexts.length; i++) {
+      const upper = paraTexts[i].toUpperCase().trim();
+      if (
+        upper.length < 60 &&
+        ["CERTIFICATE", "DECLARATION", "ACKNOWLEDGEMENT", "ABSTRACT", "TABLE OF CONTENT", "CONTENTS", "INDEX"].some(
+          (fm) => upper === fm || upper.startsWith(fm),
+        )
+      ) {
+        lastFrontMatterIdx = i;
+      }
+    }
+
+    let bodyAnchorIdx: number | null = null;
+    const searchStart = Math.max(0, lastFrontMatterIdx + 1);
+    for (let i = searchStart; i < paraTexts.length; i++) {
+      const text = paraTexts[i].trim();
+      if (!text || isInstructionOrRuleText(text)) continue;
+      if (text.includes("...") || /\s{3,}\d+$/.test(text)) continue;
+      if (/^(?:CHAPTER\s*[-:]?\s*(?:1|I)\b|1\.?\s+INTRODUCTION\b|INTRODUCTION\b)/i.test(text)) {
+        bodyAnchorIdx = i;
+        break;
+      }
+    }
+
+    const isInstitutional = matchedInstCount >= 2 || bodyAnchorIdx !== null;
+    const parsedTypographyRules =
+      isInstitutional || rules.length > 0
+        ? parseTypographyRulesFromTexts(paraTexts, uniqueFonts[0] || "Times New Roman")
+        : undefined;
 
     if (rules.length === 0) {
       rules.push(
@@ -698,6 +838,9 @@ export function analyzeTemplateBuffer(
       document_type: "docx",
       total_pages_or_slides: Math.max(1, Math.ceil(paragraphs.length / 6)),
       style_hash: styleHash,
+      is_institutional_template: isInstitutional,
+      body_anchor_index: bodyAnchorIdx,
+      parsed_typography_rules: parsedTypographyRules,
       page: {
         width_pt: widthPt,
         height_pt: heightPt,
@@ -705,9 +848,9 @@ export function analyzeTemplateBuffer(
         margins,
       },
       fonts: {
-        default: uniqueFonts[0] || "Aptos",
-        body: uniqueFonts[0] || "Aptos",
-        heading1: uniqueFonts[1] || uniqueFonts[0] || "Aptos Display",
+        default: (parsedTypographyRules?.font_family as string) || uniqueFonts[0] || "Aptos",
+        body: (parsedTypographyRules?.font_family as string) || uniqueFonts[0] || "Aptos",
+        heading1: (parsedTypographyRules?.font_family as string) || uniqueFonts[1] || uniqueFonts[0] || "Aptos Display",
         all_detected_fonts: uniqueFonts,
       },
       theme: {
@@ -1217,6 +1360,228 @@ function synthesizePresentationSlides(
   return result;
 }
 
+interface ExtractedDocMetadata {
+  author: string;
+  guide: string;
+  department: string;
+  institution: string;
+  academicYear: string;
+}
+
+function extractDocumentMetadata(prompt: string, input: StandaloneGenerateInput): ExtractedDocMetadata {
+  let author = input.author?.trim() || "";
+  let guide = input.guide?.trim() || "";
+  let department = input.department?.trim() || "";
+  let institution = input.institution?.trim() || "";
+  let academicYear = input.academic_year?.trim() || "";
+
+  if (!author) {
+    const m = prompt.match(
+      /(?:submitted\s+by|prepared\s+by|authored\s+by|student(?:\s+name)?|author(?:\s+name)?|\bby)\s*(?:is|:|-)?\s*([A-Z][a-zA-Z.]*(?:\s+[A-Z][a-zA-Z.]*){0,3})/,
+    );
+    if (m?.[1]) author = m[1].trim();
+  }
+  if (!guide) {
+    const m = prompt.match(
+      /(?:guided\s+by|under\s+the\s+guidance\s+of|supervised\s+by|guide(?:\s+name)?|supervisor|prof\.|dr\.)\s*(?:is|:|-)?\s*((?:Prof\.?\s*|Dr\.?\s*)?[A-Z][a-zA-Z.]*(?:\s+[A-Z][a-zA-Z.]*){0,3})/,
+    );
+    if (m?.[1]) guide = m[1].trim();
+  }
+  if (!department) {
+    const m = prompt.match(/(?:department\s+of|dept\.?\s+of)\s+([A-Za-z][A-Za-z &,\-]{2,60})/i);
+    if (m?.[1]) department = m[1].trim().replace(/[.;,]+$/, "");
+  }
+  if (!institution) {
+    const m = prompt.match(
+      /\b([A-Z][A-Za-z &,\-]{2,60}?\s+(?:Institute(?:\s+of\s+[A-Za-z &]+)?|University|College(?:\s+of\s+[A-Za-z &]+)?|Academy))\b/,
+    );
+    if (m?.[1]) institution = m[1].trim().replace(/[.;,]+$/, "");
+  }
+  if (!academicYear) {
+    const m = prompt.match(/\b(20\d{2}\s*[-–/]\s*(?:20)?\d{2})\b/);
+    if (m?.[1]) academicYear = m[1].replace(/\s+/g, "");
+  }
+
+  return {
+    author: author || "Academic Researcher",
+    guide: guide || "Faculty Supervisor",
+    department: department || "Computer Engineering",
+    institution,
+    academicYear: academicYear || "2025-2026",
+  };
+}
+
+function replaceParagraphXmlText(pXml: string, newText: string): string {
+  const pPrMatch = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
+  const firstRPrMatch = pXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] || "";
+  const pageBreaks = Array.from(pXml.matchAll(/<w:br[^>]*w:type="page"[^>]*\/>/g))
+    .map((m) => `<w:r>${m[0]}</w:r>`)
+    .join("");
+  return `<w:p>${pPrMatch}${pageBreaks}<w:r>${firstRPrMatch}<w:t>${escapeXml(newText)}</w:t></w:r></w:p>`;
+}
+
+function cleanInstructionParagraphXml(pXml: string): string {
+  const hasSectPr = /<w:sectPr[\s>]/.test(pXml);
+  const hasPageBreak = /<w:br[^>]*w:type="page"/.test(pXml) || /<w:pageBreakBefore/.test(pXml);
+  if (!hasSectPr && !hasPageBreak) {
+    return "";
+  }
+  const pPrMatch = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
+  const pageBreaks = Array.from(pXml.matchAll(/<w:br[^>]*w:type="page"[^>]*\/>/g))
+    .map((m) => `<w:r>${m[0]}</w:r>`)
+    .join("");
+  return `<w:p>${pPrMatch}${pageBreaks}</w:p>`;
+}
+
+function cleanFrontMatterXml(
+  frontXml: string,
+  title: string,
+  sections: PlannedSectionItem[],
+  meta: ExtractedDocMetadata,
+  rules?: Record<string, unknown>,
+): string {
+  const fontFamily = (rules?.font_family as string) || "Times New Roman";
+  const bodySizeHalfPt = Math.round(Number(rules?.body_size_pt || 12) * 2);
+  const lineTwips = Math.round(Number(rules?.line_spacing || 1.5) * 240);
+
+  let mode: "normal" | "abstract" | "toc" = "normal";
+  let abstractInjected = false;
+  let tocInjected = false;
+
+  // First clean any tables inside front matter (e.g. TOC table or metadata table)
+  const withCleanedTables = frontXml.replace(/<w:tbl[\s>][\s\S]*?<\/w:tbl>/g, (tblXml) => {
+    const tblText = stripXmlTags(tblXml).toLowerCase();
+    if (tblText.includes("chapter") && (tblText.includes("page") || tblText.includes("title") || tblText.includes("content"))) {
+      tocInjected = true;
+      const tblPr = tblXml.match(/<w:tblPr>[\s\S]*?<\/w:tblPr>/)?.[0] || "";
+      const tblGrid = tblXml.match(/<w:tblGrid>[\s\S]*?<\/w:tblGrid>/)?.[0] || "";
+      const rows = Array.from(tblXml.matchAll(/<w:tr[\s>][\s\S]*?<\/w:tr>/g)).map((m) => m[0]);
+      const headerRow = rows[0] || "";
+      const newRows = sections.map((sec, idx) => {
+        const chapMatch = sec.title.match(/^(?:CHAPTER\s*[-:]?\s*(\d+)|(\d+)\.\s*(.*))/i);
+        const chapNo = chapMatch ? chapMatch[1] || chapMatch[2] || String(idx + 1) : String(idx + 1);
+        const cleanTitle = sec.title
+          .replace(/^(?:CHAPTER\s*[-:]?\s*\d+\s*[-:]?\s*|\d+\.\s*)/i, "")
+          .trim() || sec.title;
+        const pageNo = String(idx * 3 + 1);
+        return `<w:tr><w:tc><w:p><w:r><w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr><w:t>${escapeXml(chapNo)}</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr><w:t>${escapeXml(cleanTitle)}</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr><w:t>${escapeXml(pageNo)}</w:t></w:r></w:p></w:tc></w:tr>`;
+      });
+      return `<w:tbl>${tblPr}${tblGrid}${headerRow}${newRows.join("")}</w:tbl>`;
+    }
+    return tblXml.replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (cellPXml) => {
+      const cText = stripXmlTags(cellPXml);
+      if (!cText) return cellPXml;
+      if (isInstructionOrRuleText(cText)) return `<w:p/>`;
+      return substituteCoverPlaceholdersInParagraph(cellPXml, cText, title, meta);
+    });
+  });
+
+  return withCleanedTables.replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (pXml) => {
+    const text = stripXmlTags(pXml);
+    if (!text) return pXml;
+
+    const upper = text.toUpperCase().trim();
+    if (upper === "ABSTRACT") {
+      mode = "abstract";
+      return pXml;
+    }
+    if (upper.startsWith("TABLE OF CONTENT") || upper === "CONTENTS" || upper === "INDEX") {
+      mode = "toc";
+      return pXml;
+    }
+    if (
+      upper.length < 55 &&
+      ["CERTIFICATE", "DECLARATION", "ACKNOWLEDGEMENT", "LIST OF FIGURES", "LIST OF TABLES", "ABBREVIATIONS"].some(
+        (h) => upper === h || upper.startsWith(h),
+      )
+    ) {
+      mode = "normal";
+      return pXml;
+    }
+
+    if (isInstructionOrRuleText(text)) {
+      if (mode === "abstract" && !abstractInjected) {
+        abstractInjected = true;
+        const absText = synthesizeAbstractParagraph(title, sections);
+        return `<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:line="${lineTwips}" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr><w:t>${escapeXml(absText)}</w:t></w:r></w:p>`;
+      }
+      return cleanInstructionParagraphXml(pXml);
+    }
+
+    if (mode === "abstract") {
+      if (!abstractInjected) {
+        abstractInjected = true;
+        const absText = synthesizeAbstractParagraph(title, sections);
+        return `<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:line="${lineTwips}" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr><w:t>${escapeXml(absText)}</w:t></w:r></w:p>`;
+      }
+      return cleanInstructionParagraphXml(pXml);
+    }
+
+    if (mode === "toc") {
+      if (!tocInjected) {
+        tocInjected = true;
+        const tocLines = sections.map((sec, idx) => {
+          const cleanSec = sec.title.replace(/^(\d+)\.\s*/, "CHAPTER $1: ");
+          const pageNo = idx * 3 + 1;
+          return `<w:p><w:pPr><w:spacing w:line="${lineTwips}" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr><w:t>${escapeXml(cleanSec)} ................................................ ${pageNo}</w:t></w:r></w:p>`;
+        });
+        const trailingBreak = /<w:br[^>]*w:type="page"/.test(pXml)
+          ? `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`
+          : "";
+        return `${tocLines.join("\n")}${trailingBreak}`;
+      }
+      return cleanInstructionParagraphXml(pXml);
+    }
+
+    return substituteCoverPlaceholdersInParagraph(pXml, text, title, meta);
+  });
+}
+
+function synthesizeAbstractParagraph(title: string, sections: PlannedSectionItem[]): string {
+  const chunks: string[] = [];
+  for (const sec of sections) {
+    for (const p of sec.paragraphs) {
+      if (p.trim()) chunks.push(p.trim());
+      if (chunks.join(" ").split(/\s+/).length >= 140) break;
+    }
+    if (chunks.join(" ").split(/\s+/).length >= 140) break;
+  }
+  if (chunks.length === 0) {
+    return `This report presents a comprehensive technical study of ${title}, examining core architectural principles, methodology, system implementation, and empirical evaluation.`;
+  }
+  return chunks.join(" ");
+}
+
+function substituteCoverPlaceholdersInParagraph(
+  pXml: string,
+  text: string,
+  title: string,
+  meta: ExtractedDocMetadata,
+): string {
+  let updated = text;
+  updated = updated
+    .replace(/<\s*(?:seminar\s+|project\s+)?title\s*>|\[\s*(?:seminar\s+|project\s+)?title\s*\]|\{\s*title\s*\}/gi, title.toUpperCase())
+    .replace(/<\s*(?:student\s+name|name\s+of\s+(?:the\s+)?student|author)\s*>|\[\s*student\s+name\s*\]/gi, meta.author)
+    .replace(/<\s*(?:guide\s+name|name\s+of\s+(?:the\s+)?guide|supervisor)\s*>|\[\s*guide\s+name\s*\]/gi, meta.guide)
+    .replace(/<\s*department\s*>|\[\s*department\s*\]/gi, meta.department);
+
+  const lower = updated.toLowerCase().trim();
+  if (["title of seminar", "seminar title", "project title", "topic name", "enter title here"].includes(lower)) {
+    updated = title.toUpperCase();
+  } else if (["name of student", "student name", "name of candidate", "(name of student)"].includes(lower)) {
+    updated = meta.author;
+  } else if (["name of guide", "guide name", "prof. guide name", "(name of guide)"].includes(lower)) {
+    updated = meta.guide;
+  } else {
+    updated = updated.replace(/\b20\d{2}\s*[-–/]\s*(?:20)?XX\b/gi, meta.academicYear);
+  }
+
+  if (updated !== text) {
+    return replaceParagraphXmlText(pXml, updated);
+  }
+  return pXml;
+}
+
 function buildDocxFromPlan(
   templateRecord: StoredTemplateRecord,
   title: string,
@@ -1226,12 +1591,27 @@ function buildDocxFromPlan(
     editAction?: "append" | "insert_after";
     editTargetIndex?: number;
     override?: { target: string; value: string };
+    metadata?: ExtractedDocMetadata;
   },
 ): Buffer {
   const entries = new Map<string, Buffer>(templateRecord.zipEntries);
   if (entries.size === 0) {
     for (const [k, v] of readZipEntries(createSampleDocxBuffer()).entries()) {
       entries.set(k, v);
+    }
+  }
+
+  // Strip embedded instruction paragraphs from headers/footers if any exist
+  for (const [entryKey, entryBuf] of Array.from(entries.entries())) {
+    if (/^word\/(?:header|footer)\d*\.xml$/.test(entryKey)) {
+      const xml = entryBuf.toString("utf8");
+      const cleaned = xml.replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (pXml) => {
+        const t = stripXmlTags(pXml);
+        return t && isInstructionOrRuleText(t) ? `<w:p/>` : pXml;
+      });
+      if (cleaned !== xml) {
+        entries.set(entryKey, Buffer.from(cleaned, "utf8"));
+      }
     }
   }
 
@@ -1250,6 +1630,7 @@ function buildDocxFromPlan(
 
   const existingDocXml = entries.get("word/document.xml")?.toString("utf8") || "";
   let sectPrMatch =
+    existingDocXml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>(?=\s*<\/w:body>)/)?.[0] ||
     existingDocXml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0] ||
     `<w:sectPr><w:pgSz w:w="12240" w:h="15840" w:orient="portrait"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>`;
 
@@ -1258,10 +1639,21 @@ function buildDocxFromPlan(
     sectPrMatch = sectPrMatch.replace("</w:sectPr>", `${pgBordersXml}</w:sectPr>`);
   }
 
+  const isInstitutional = Boolean(templateRecord.spec.is_institutional_template);
+  const rules = templateRecord.spec.parsed_typography_rules;
+  const fontFamily = (rules?.font_family as string) || templateRecord.spec.fonts?.body || "Times New Roman";
+  const h1SizeHalfPt = Math.round(Number(rules?.heading1_size_pt || 14) * 2);
+  const h2SizeHalfPt = Math.round(Number(rules?.heading2_size_pt || 12) * 2);
+  const bodySizeHalfPt = Math.round(Number(rules?.body_size_pt || 12) * 2);
+  const captionSizeHalfPt = Math.round(Number(rules?.caption_size_pt || 11) * 2);
+  const lineTwips = Math.round(Number(rules?.line_spacing || 1.5) * 240);
+  const h1Jc = (rules?.heading1_align as string) === "center" || isInstitutional ? "center" : "left";
+  const bodyJc = (rules?.body_align as string) === "justify" || isInstitutional ? "both" : "left";
+
   const renderedXmlParts: string[] = [];
   const isEditMode = options.mode === "edit_document";
 
-  if (!isEditMode) {
+  if (!isEditMode && !isInstitutional) {
     renderedXmlParts.push(
       `<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>${escapeXml(title)}</w:t></w:r></w:p>`,
     );
@@ -1272,32 +1664,74 @@ function buildDocxFromPlan(
       ? `<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="8" w:color="${escapeXml(overrideHex)}"/><w:bottom w:val="single" w:sz="8" w:color="${escapeXml(overrideHex)}"/><w:insideH w:val="single" w:sz="6" w:color="${escapeXml(overrideHex)}"/></w:tblBorders></w:tblPr>`
       : "";
 
-  for (const sec of sections) {
+  for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+    const sec = sections[sIdx];
     const styleId = sec.heading_style.replace(/\s+/g, "");
+    const isH1 = styleId.toLowerCase() === "heading1" || styleId.toLowerCase() === "title";
+
+    let headingText = sec.title;
+    if (isInstitutional && isH1) {
+      const m = headingText.match(/^(\d+)\.\s*(.+)$/);
+      if (m) {
+        headingText = `CHAPTER ${m[1]}: ${m[2]}`;
+      }
+      if (rules?.heading1_uppercase !== false) {
+        headingText = headingText.toUpperCase();
+      }
+    }
+
+    const pageBreakBeforeXml =
+      isInstitutional && isH1 && sIdx > 0 ? `<w:r><w:br w:type="page"/></w:r>` : "";
+    const headingJcXml = isH1 ? `<w:jc w:val="${h1Jc}"/>` : `<w:jc w:val="left"/>`;
+    const headingSz = isH1 ? h1SizeHalfPt : h2SizeHalfPt;
+    const headingRPr =
+      rules || isInstitutional
+        ? `<w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:b/><w:sz w:val="${headingSz}"/></w:rPr>`
+        : "";
+
     renderedXmlParts.push(
-      `<w:p><w:pPr><w:pStyle w:val="${escapeXml(styleId)}"/></w:pPr><w:r><w:t>${escapeXml(sec.title)}</w:t></w:r></w:p>`,
+      `<w:p><w:pPr><w:pStyle w:val="${escapeXml(styleId)}"/>${headingJcXml}<w:spacing w:before="240" w:after="120"/></w:pPr>${pageBreakBeforeXml}<w:r>${headingRPr}<w:t>${escapeXml(headingText)}</w:t></w:r></w:p>`,
     );
+
+    const bodyPPr =
+      rules || isInstitutional
+        ? `<w:pPr><w:jc w:val="${bodyJc}"/><w:spacing w:line="${lineTwips}" w:lineRule="auto" w:after="120"/></w:pPr>`
+        : "";
+    const bodyRPr =
+      rules || isInstitutional
+        ? `<w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr>`
+        : "";
+
     for (const para of sec.paragraphs) {
-      renderedXmlParts.push(`<w:p><w:r><w:t>${escapeXml(para)}</w:t></w:r></w:p>`);
+      renderedXmlParts.push(`<w:p>${bodyPPr}<w:r>${bodyRPr}<w:t>${escapeXml(para)}</w:t></w:r></w:p>`);
     }
     if (sec.bullets) {
       for (const bullet of sec.bullets) {
-        renderedXmlParts.push(`<w:p><w:r><w:t>• ${escapeXml(bullet)}</w:t></w:r></w:p>`);
+        renderedXmlParts.push(
+          `<w:p>${bodyPPr}<w:r>${bodyRPr}<w:t>• ${escapeXml(bullet)}</w:t></w:r></w:p>`,
+        );
       }
     }
     if (sec.table_data) {
       if (sec.table_data.title) {
+        const capRPr =
+          rules || isInstitutional
+            ? `<w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:b/><w:sz w:val="${captionSizeHalfPt}"/></w:rPr>`
+            : "";
         renderedXmlParts.push(
-          `<w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t>${escapeXml(sec.table_data.title)}</w:t></w:r></w:p>`,
+          `<w:p><w:pPr><w:pStyle w:val="Heading3"/><w:jc w:val="center"/></w:pPr><w:r>${capRPr}<w:t>${escapeXml(sec.table_data.title)}</w:t></w:r></w:p>`,
         );
       }
       const headerCells = sec.table_data.headers
-        .map((h) => `<w:tc><w:p><w:r><w:t>${escapeXml(h)}</w:t></w:r></w:p></w:tc>`)
+        .map(
+          (h) =>
+            `<w:tc><w:p><w:r>${bodyRPr}<w:t>${escapeXml(h)}</w:t></w:r></w:p></w:tc>`,
+        )
         .join("");
       const bodyRows = sec.table_data.rows
         .map(
           (row) =>
-            `<w:tr>${row.map((cell) => `<w:tc><w:p><w:r><w:t>${escapeXml(cell)}</w:t></w:r></w:p></w:tc>`).join("")}</w:tr>`,
+            `<w:tr>${row.map((cell) => `<w:tc><w:p><w:r>${bodyRPr}<w:t>${escapeXml(cell)}</w:t></w:r></w:p></w:tc>`).join("")}</w:tr>`,
         )
         .join("");
       renderedXmlParts.push(`<w:tbl>${tblPrXml}<w:tr>${headerCells}</w:tr>${bodyRows}</w:tbl>`);
@@ -1309,8 +1743,53 @@ function buildDocxFromPlan(
     const withoutSectPr = existingDocXml
       .replace(/^[\s\S]*?<w:body>/, "")
       .replace(/<\/w:body>[\s\S]*$/, "")
-      .replace(/<w:sectPr[\s\S]*?<\/w:sectPr>/, "");
+      .replace(/<w:sectPr[\s\S]*?<\/w:sectPr>(?=\s*$)/, "")
+      .replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (pXml) => {
+        const t = stripXmlTags(pXml);
+        return t && isInstructionOrRuleText(t) ? cleanInstructionParagraphXml(pXml) : pXml;
+      });
     newBodyInner = `${withoutSectPr}\n${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
+  } else if (isInstitutional && existingDocXml.includes("<w:body>")) {
+    const bodyContent = existingDocXml
+      .replace(/^[\s\S]*?<w:body>/, "")
+      .replace(/<\/w:body>[\s\S]*$/, "")
+      .replace(/<w:sectPr[\s\S]*?<\/w:sectPr>(?=\s*$)/, "");
+
+    // Locate the exact XML character offset of the body anchor paragraph
+    const paraMatches = Array.from(bodyContent.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g));
+    const anchorIdx = templateRecord.spec.body_anchor_index;
+    let cutOffset = -1;
+    if (
+      typeof anchorIdx === "number" &&
+      anchorIdx >= 0 &&
+      anchorIdx < paraMatches.length &&
+      paraMatches[anchorIdx].index !== undefined
+    ) {
+      cutOffset = paraMatches[anchorIdx].index!;
+    } else {
+      // Fallback: find the first CHAPTER 1 / 1. INTRODUCTION paragraph after front matter
+      for (let i = 0; i < paraMatches.length; i++) {
+        const t = stripXmlTags(paraMatches[i][0]).trim();
+        if (!t || isInstructionOrRuleText(t) || t.includes("...")) continue;
+        if (/^(?:CHAPTER\s*[-:]?\s*(?:1|I)\b|1\.?\s+INTRODUCTION\b)/i.test(t)) {
+          cutOffset = paraMatches[i].index ?? -1;
+          break;
+        }
+      }
+    }
+
+    const frontMatterRaw = cutOffset >= 0 ? bodyContent.slice(0, cutOffset) : "";
+    const meta = options.metadata || {
+      author: "Academic Researcher",
+      guide: "Faculty Supervisor",
+      department: "Computer Engineering",
+      institution: "",
+      academicYear: "2025-2026",
+    };
+    const cleanedFrontMatter = frontMatterRaw
+      ? cleanFrontMatterXml(frontMatterRaw, title, sections, meta, rules)
+      : "";
+    newBodyInner = `${cleanedFrontMatter}\n${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
   } else {
     newBodyInner = `${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
   }
@@ -1375,6 +1854,11 @@ function buildPptxFromPlan(
 export interface StandaloneGenerateInput {
   template_id: string;
   prompt: string;
+  author?: string;
+  guide?: string;
+  department?: string;
+  institution?: string;
+  academic_year?: string;
   document_type?: "docx" | "pptx" | "pdf";
   mode?: string;
   template_mode?: string;
@@ -1420,6 +1904,7 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
 
   const docType = templateRecord.documentType;
   const topic = extractTopicKeywords(input.prompt);
+  const metadata = extractDocumentMetadata(input.prompt, input);
   const activeRules =
     input.enabled_rule_indices && templateRecord.spec.extracted_rules
       ? templateRecord.spec.extracted_rules.filter((_, idx) =>
@@ -1512,6 +1997,7 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
       editAction: input.edit_action,
       editTargetIndex: input.edit_target_index,
       override: input.overrides?.[0],
+      metadata,
     });
     planSummary = sections.map((s) => ({ title: s.title, layout: s.heading_style }));
     planDetails = { title: topic, sections };

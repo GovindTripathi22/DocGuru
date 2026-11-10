@@ -40,12 +40,13 @@ class ContentFitter:
         first_word = 0
         while len(word_spans) - first_word > cls.MAX_PARAGRAPH_WORDS:
             limit = word_spans[first_word + cls.MAX_PARAGRAPH_WORDS - 1].end()
-            boundaries = list(cls.SENTENCE_BOUNDARY.finditer(paragraph, segment_start, limit))
+            search_limit = word_spans[first_word + cls.MAX_PARAGRAPH_WORDS].start()
+            boundaries = list(cls.SENTENCE_BOUNDARY.finditer(paragraph, segment_start, search_limit))
             if boundaries:
                 cut = boundaries[-1].end()
             else:
                 clause_boundaries = list(
-                    cls.CLAUSE_BOUNDARY.finditer(paragraph, segment_start, limit)
+                    cls.CLAUSE_BOUNDARY.finditer(paragraph, segment_start, search_limit)
                 )
                 cut = clause_boundaries[-1].end() if clause_boundaries else limit
             chunks.append(paragraph[segment_start:cut])

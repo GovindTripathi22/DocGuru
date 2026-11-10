@@ -25,7 +25,7 @@ body {
 /* --- Aesthetic Sky Blue & Frosted Glass Design System --- */
 
 @keyframes pulseGlow {
-  0%, 100% {
+  from, to {
     opacity: 0.7;
     transform: scale(1);
     box-shadow: 0 0 16px rgba(14, 165, 233, 0.25);
@@ -38,10 +38,10 @@ body {
 }
 
 @keyframes shimmer {
-  0% {
+  from {
     background-position: -200% 0;
   }
-  100% {
+  to {
     background-position: 200% 0;
   }
 }
@@ -58,7 +58,7 @@ body {
 }
 
 @keyframes floatSubtle {
-  0%, 100% {
+  from, to {
     transform: translateY(0);
   }
   50% {
@@ -79,9 +79,9 @@ body {
     90deg,
     rgba(14, 165, 233, 0.12) 0%,
     rgba(56, 189, 248, 0.28) 50%,
-    rgba(14, 165, 233, 0.12) 100%
+    rgba(14, 165, 233, 0.12)
   );
-  background-size: 200% 100%;
+  background-size: 200% auto;
   animation: shimmer 2.5s infinite linear;
 }
 
@@ -90,9 +90,9 @@ body {
     90deg,
     #0284c7 0%,
     #06b6d4 50%,
-    #10b981 100%
+    #10b981
   );
-  background-size: 200% 100%;
+  background-size: 200% auto;
   animation: shimmer 2s infinite ease-in-out;
 }
 
@@ -120,7 +120,7 @@ body {
 }
 
 .glass-button-primary {
-  background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%);
+  background: linear-gradient(135deg, #0284c7 0%, #06b6d4);
   border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35);
   color: #ffffff;

@@ -56,6 +56,9 @@ export interface TemplateSpec {
   header?: HeaderFooterInfo;
   footer?: HeaderFooterInfo;
   table_rules?: Record<string, unknown>[];
+  is_institutional_template?: boolean;
+  body_anchor_index?: number | null;
+  parsed_typography_rules?: Record<string, unknown>;
 }
 
 export interface ValidationReport {
@@ -105,6 +108,11 @@ export interface PromptData {
   enabledRuleIndexes?: number[];
   includeImages?: boolean;
   imageMode?: "off" | "search" | "placeholder";
+  author?: string;
+  guide?: string;
+  department?: string;
+  institution?: string;
+  academicYear?: string;
 }
 
 export interface ResearchSource {

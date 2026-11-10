@@ -47,6 +47,11 @@ export function PromptInput({
   const [enhanceSuccess, setEnhanceSuccess] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAuthorDetails, setShowAuthorDetails] = useState(false);
+  const [author, setAuthor] = useState("");
+  const [guide, setGuide] = useState("");
+  const [department, setDepartment] = useState("");
+  const [institution, setInstitution] = useState("");
   const [overrideTarget, setOverrideTarget] = useState<
     "none" | "table_border" | "page_border" | "heading_color"
   >("none");
@@ -168,6 +173,10 @@ export function PromptInput({
       includeImages: imageMode !== "off",
       imageMode,
       enabledRuleIndexes,
+      ...(author.trim() ? { author: author.trim() } : {}),
+      ...(guide.trim() ? { guide: guide.trim() } : {}),
+      ...(department.trim() ? { department: department.trim() } : {}),
+      ...(institution.trim() ? { institution: institution.trim() } : {}),
     });
   };
 
@@ -549,6 +558,84 @@ export function PromptInput({
             ))}
           </div>
         </fieldset>
+      )}
+
+      {/* Optional Report & Front-Matter Metadata (Cover Page / Certificate / Acknowledgement) */}
+      {documentType !== "pptx" && (
+        <div className="rounded-xl border border-sky-200/80 bg-white/80 p-3.5 text-xs shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span className="font-bold text-slate-800">
+                Cover Page &amp; Seminar Metadata (Optional)
+              </span>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Populate Student Name, Guide, Department, and Institution on cover and certificate pages, or include them directly in your prompt.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAuthorDetails(!showAuthorDetails)}
+              className="text-xs font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1"
+            >
+              {showAuthorDetails ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Hide fields
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Fill author &amp; guide details
+                </>
+              )}
+            </button>
+          </div>
+
+          {showAuthorDetails && (
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 border-t border-sky-100 pt-3">
+              <label className="grid gap-1 text-xs font-bold text-slate-800">
+                Student / Author Name
+                <input
+                  type="text"
+                  value={author}
+                  onChange={(e) => setAuthor(e.target.value)}
+                  placeholder="e.g., Devon Vance (Roll No. 42)"
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-normal text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-bold text-slate-800">
+                Guide / Supervisor Name
+                <input
+                  type="text"
+                  value={guide}
+                  onChange={(e) => setGuide(e.target.value)}
+                  placeholder="e.g., Dr. S. K. Wankhade"
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-normal text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-bold text-slate-800">
+                Department
+                <input
+                  type="text"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  placeholder="e.g., Department of Computer Engineering"
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-normal text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-bold text-slate-800">
+                Institution / College
+                <input
+                  type="text"
+                  value={institution}
+                  onChange={(e) => setInstitution(e.target.value)}
+                  placeholder="e.g., Institute of Engineering & Technology"
+                  className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-normal text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                />
+              </label>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Advanced Settings (Collapsed by default so regular users are not overwhelmed) */}

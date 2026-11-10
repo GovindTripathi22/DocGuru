@@ -18,10 +18,73 @@ UPLOADED_SEMINAR_TEMPLATE = Path(
 
 @pytest.fixture
 def seminar_template_path(tmp_path) -> Path:
-    """Fixture providing the seminar template path (or a local copy)."""
+    """Fixture providing the seminar template path (or building a realistic seminar report template)."""
     if UPLOADED_SEMINAR_TEMPLATE.exists():
         return UPLOADED_SEMINAR_TEMPLATE
-    pytest.skip("Uploaded seminar report template not available.")
+
+    doc = docx.Document()
+    # Cover Page
+    doc.add_paragraph("A SEMINAR REPORT ON")
+    doc.add_paragraph("<Title>")
+    doc.add_paragraph("Formatting Tips: Font Style: Times New Roman(Bold), 14 Pt, Capital, Center Aligned")
+    doc.add_paragraph("SUBMITTED TO THE SAVITRIBAI PHULE PUNE UNIVERSITY")
+    doc.add_paragraph("SUBMITTED BY")
+    doc.add_paragraph("Name of Student")
+    doc.add_paragraph("Roll No: 4101")
+    doc.add_paragraph("UNDER THE GUIDANCE OF")
+    doc.add_paragraph("Prof. Guide Name")
+    doc.add_paragraph("DEPARTMENT OF COMPUTER ENGINEERING")
+    doc.add_paragraph("Academic Year 2023-24")
+
+    # Certificate
+    doc.add_paragraph("CERTIFICATE", style="Heading 1")
+    doc.add_paragraph(
+        'This is to certify that the seminar report entitled "<Title>" submitted by '
+        "Name of Student is a bonafide work carried out under the supervision of Prof. Guide Name."
+    )
+
+    # Acknowledgement
+    doc.add_paragraph("ACKNOWLEDGEMENT", style="Heading 1")
+    doc.add_paragraph(
+        'I express my sincere gratitude to my guide Prof. Guide Name for constant guidance on "<Title>".'
+    )
+    doc.add_paragraph("Name of Student")
+
+    # Abstract
+    doc.add_paragraph("ABSTRACT", style="Heading 1")
+    doc.add_paragraph("Formatting Rule: Abstract should be 150-200 words in Times New Roman, 12 Pt, 1.5 line spacing.")
+    doc.add_paragraph("Sample placeholder abstract text that will be replaced during generation.")
+
+    # Table of Contents
+    doc.add_paragraph("TABLE OF CONTENT", style="Heading 1")
+    toc_table = doc.add_table(rows=3, cols=3)
+    toc_table.cell(0, 0).text = "Chapter"
+    toc_table.cell(0, 1).text = "Title"
+    toc_table.cell(0, 2).text = "Page No"
+    toc_table.cell(1, 0).text = "1"
+    toc_table.cell(1, 1).text = "Introduction"
+    toc_table.cell(1, 2).text = "1"
+    toc_table.cell(2, 0).text = "2"
+    toc_table.cell(2, 1).text = "Literature Survey"
+    toc_table.cell(2, 2).text = "5"
+
+    # Body Anchor (Chapter 1) + Sample Chapters & Guidelines to be replaced in-place
+    doc.add_paragraph("CHAPTER 1: INTRODUCTION", style="Heading 1")
+    doc.add_paragraph("Note: Chapter 1 will start from this page and will be introduction part.")
+    doc.add_paragraph("Font Style: Times New Roman(Bold), 14 Pt, Capital, Center Aligned for Chapter Headings.")
+    doc.add_paragraph("Sub Heading 2 Formatting Tips: 12 Pt Bold Left Aligned.")
+    doc.add_paragraph("For giving long space please do not use space bar, use tab key instead.")
+    doc.add_paragraph("Block Diagram of Honeypot System")
+    for idx in range(2, 7):
+        doc.add_paragraph(f"CHAPTER {idx}: SAMPLE CHAPTER {idx}", style="Heading 1")
+        for p_i in range(25):
+            doc.add_paragraph(
+                f"Dummy sample chapter {idx} paragraph {p_i} that must be purged and replaced in-place."
+            )
+
+    out_file = tmp_path / "synthetic_seminar_template.docx"
+    doc.save(str(out_file))
+    return out_file
 
 
 def test_docx_analyzer_detects_institutional_template(seminar_template_path):

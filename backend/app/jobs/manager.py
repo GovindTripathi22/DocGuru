@@ -90,26 +90,26 @@ class JobManager:
     def _extract_author_and_guide(text: str) -> tuple[str | None, str | None]:
         author, guide = None, None
         m_author = re.search(
-            r"\b(?:by|author|student):\s*([A-Za-z\s.]+?)(?:\s+guided|\s+guide|\s+under|\n|$)",
+            r"\b(?:by|author|student(?:\s+name)?)\s*[:\-]\s*([A-Za-z\s.()0-9]+?)(?:\s+guided|\s+guide|\s+under|\s+department|\s+college|,|\n|$)",
             text,
             re.I,
         )
         if not m_author:
             m_author = re.search(
-                r"\b(?:submitted\s+by|by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+                r"\b(?:submitted\s+by|prepared\s+by|by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
                 text,
             )
         if m_author:
             author = m_author.group(1).strip()
 
         m_guide = re.search(
-            r"\b(?:guided\s+by|guide|advisor):\s*([A-Za-z\s.]+?)(?:\n|$)",
+            r"\b(?:guided\s+by|guide(?:\s+name)?|supervisor|advisor)\s*[:\-]\s*([A-Za-z\s.]+?)(?:\s+department|\s+college|,|\n|$)",
             text,
             re.I,
         )
         if not m_guide:
             m_guide = re.search(
-                r"\b(?:guided\s+by|under\s+guidance\s+of)\s+((?:Dr\.|Prof\.)?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+                r"\b(?:guided\s+by|under\s+(?:the\s+)?guidance\s+of)\s+((?:Dr\.|Prof\.|Mr\.|Ms\.)?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z.]+){1,2})",
                 text,
                 re.I,
             )
@@ -117,6 +117,31 @@ class JobManager:
             guide = m_guide.group(1).strip()
 
         return author, guide
+
+    @staticmethod
+    def _extract_institution_metadata(text: str) -> tuple[str | None, str | None, str | None]:
+        department, institution, academic_year = None, None, None
+        m_dept = re.search(
+            r"\b(Department\s+of\s+[A-Za-z\s&]+?)(?:\s+at|\s+in|,|\.|\n|$)",
+            text,
+            re.I,
+        )
+        if m_dept:
+            department = m_dept.group(1).strip()
+
+        m_inst = re.search(
+            r"\b(?:college|institution|institute|university)\s*[:\-]\s*([A-Za-z\s,&.]+?)(?:,|\.|\n|$)",
+            text,
+            re.I,
+        )
+        if m_inst:
+            institution = m_inst.group(1).strip()
+
+        m_year = re.search(r"\b(20\d{2}\s*[-–]\s*(?:20)?\d{2})\b", text)
+        if m_year:
+            academic_year = m_year.group(1).strip()
+
+        return department, institution, academic_year
 
     def _save_job_snapshot(self, job: JobProgress) -> None:
         try:
@@ -434,13 +459,21 @@ class JobManager:
 
         if spec.document_type == "docx":
             if hasattr(plan, "author"):
-                detected_author, detected_guide = self._extract_author_and_guide(
-                    f"{req.prompt} {req.custom_instructions or ''}"
+                combined_prompt = f"{req.prompt} {req.custom_instructions or ''}"
+                detected_author, detected_guide = self._extract_author_and_guide(combined_prompt)
+                detected_dept, detected_inst, detected_year = self._extract_institution_metadata(
+                    combined_prompt
                 )
                 if not plan.author:
                     plan.author = req.author or detected_author or "Student Name"
                 if not plan.guide:
                     plan.guide = req.guide or detected_guide or "Faculty Guide"
+                if hasattr(plan, "department") and not plan.department:
+                    plan.department = req.department or detected_dept
+                if hasattr(plan, "institution") and not plan.institution:
+                    plan.institution = req.institution or detected_inst
+                if hasattr(plan, "academic_year") and not plan.academic_year:
+                    plan.academic_year = req.academic_year or detected_year
 
             await anyio.to_thread.run_sync(
                 lambda: self.executor.execute_docx(
@@ -548,7 +581,13 @@ class JobManager:
         mode = getattr(plan, "generation_mode", None) or (
             "demo" if settings.MODEL_PROVIDER == "demo" else "live"
         )
-        result_warnings = list(
+        internal_warning_prefixes = (
+            "long_sentence_split_at_word_boundary",
+            "long_sentence_split_at_clause_boundary",
+            "heading_style_fallback:",
+            "paragraph_style_fallback:",
+        )
+        raw_warnings = list(
             dict.fromkeys(
                 [
                     *getattr(plan, "warnings", []),
@@ -557,6 +596,16 @@ class JobManager:
                 ]
             )
         )
+        result_warnings = [
+            w
+            for w in raw_warnings
+            if not any(w.startswith(prefix) for prefix in internal_warning_prefixes)
+        ]
+        job.warnings = [
+            w
+            for w in job.warnings
+            if not any(w.startswith(prefix) for prefix in internal_warning_prefixes)
+        ]
 
         result = {
             "success": True,
