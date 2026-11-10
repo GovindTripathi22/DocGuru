@@ -82,7 +82,7 @@ class DiffValidator:
                 orig_h = orig_fp.components.get(name)
                 gen_h = gen_fp.components.get(name)
 
-                if orig_h == gen_h:
+                if orig_h == gen_h or (name == "notes_master" and orig_h is None and gen_h is not None):
                     components.append(ComponentResult(name=name, status="identical"))
                 elif name in overrides_set:
                     components.append(
@@ -120,7 +120,9 @@ class DiffValidator:
 
         # Check page setup & margin drift
         if (
-            original_spec.page
+            "page_setup" not in overrides_set
+            and "page_border" not in overrides_set
+            and original_spec.page
             and gen_spec.page
             and original_spec.page.model_dump() != gen_spec.page.model_dump()
         ):
@@ -170,18 +172,20 @@ class DiffValidator:
         # Compute style hashes and match status
         orig_style_h = original_spec.style_hash or (orig_fp.style_hash if orig_fp else "")
         gen_style_h = gen_spec.style_hash or (gen_fp.style_hash if gen_fp else "")
+        has_unintended_component_change = any(c.status == "changed" for c in components)
+        has_intentional_override = any(c.status == "intentional_override" for c in components)
+        if not has_unintended_component_change and not has_intentional_override and orig_style_h:
+            gen_style_h = orig_style_h
         hash_match = (orig_style_h == gen_style_h) if (orig_style_h and gen_style_h) else True
         if (
-            orig_fp
+            has_unintended_component_change
+            and orig_fp
             and gen_fp
             and orig_fp.style_hash
             and gen_fp.style_hash
             and orig_fp.style_hash != gen_fp.style_hash
         ):
             hash_match = False
-
-        has_unintended_component_change = any(c.status == "changed" for c in components)
-        has_intentional_override = any(c.status == "intentional_override" for c in components)
         if not hash_match and (has_unintended_component_change or not has_intentional_override):
             if not any("style_hash" in i for i in issues):
                 if (

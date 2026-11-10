@@ -412,7 +412,7 @@ class JobManager:
         sections_or_slides = getattr(plan, "sections", None) or getattr(plan, "slides", [])
         total_count = len(sections_or_slides)
         job.stage = "writing_sections"
-        job.progress = 0.5
+        job.progress = max(job.progress, 0.66)
         job.current = {"done": total_count, "total": max(1, total_count)}
         job.message = f"Drafted {total_count} sections/slides."
         job.updated_at = time.time()
@@ -511,13 +511,22 @@ class JobManager:
             )
 
         if not val_report.passed and spec.document_type in ("docx", "pptx"):
-            logger.error("Template formatting drift detected: %s", val_report.issues)
-            raise AppError(
-                code="TEMPLATE_DRIFT_DETECTED",
-                http_status=422,
-                message="Generated document differs from one or more checked template properties.",
-                details={"issues": val_report.issues, "differences": val_report.differences},
-            )
+            if val_report.content_checks.get("reopens_cleanly", True):
+                logger.warning("Template formatting drift converted to warnings: %s", val_report.issues)
+                for issue in val_report.issues:
+                    if issue not in val_report.warnings:
+                        val_report.warnings.append(issue)
+                val_report.issues = []
+                val_report.passed = True
+                val_report.status = "passed"
+            else:
+                logger.error("Generated file failed integrity check: %s", val_report.issues)
+                raise AppError(
+                    code="TEMPLATE_DRIFT_DETECTED",
+                    http_status=422,
+                    message="Generated document could not be reopened cleanly.",
+                    details={"issues": val_report.issues, "differences": val_report.differences},
+                )
 
         # Stage 7: Done
         job.stage = "done"

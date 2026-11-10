@@ -167,7 +167,7 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
                     ? "page"
                     : "pages"
                 }`}
-              {" · Design will be preserved 100%"}
+              {" · Design properties locked to template"}
             </p>
           </div>
         </div>

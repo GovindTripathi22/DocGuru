@@ -27,9 +27,9 @@ export const ValidationReportSchema = z.object({
     name: z.string(),
     status: z.enum(["identical", "changed", "intentional_override"]),
     detail: z.string().nullable().optional(),
-  }).passthrough()),
-  issues: z.array(z.string()),
-  warnings: z.array(z.string()),
+  }).passthrough()).default([]),
+  issues: z.array(z.string()).default([]),
+  warnings: z.array(z.string()).default([]),
 }).passthrough();
 
 export const GenerationResultSchema = z.object({
@@ -65,11 +65,13 @@ export const JobProgressSchema = z.object({
     "assembling",
     "validating",
     "done",
+    "failed",
+    "cancelled",
   ]),
   progress: z.number().min(0).max(1),
   message: z.string(),
   current: z.record(z.string(), z.number()).nullable().optional(),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.string()).default([]),
   result: GenerationResultSchema.nullable().optional(),
   error: z.record(z.string(), z.unknown()).nullable().optional(),
 }).passthrough();

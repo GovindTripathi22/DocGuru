@@ -116,7 +116,6 @@ class DocxEngine:
                 r.font.size = Pt(size_pt)
             if bold is not None:
                 r.bold = bold
-
     def insert_heading(
         self,
         locked_doc: LockedTemplate,
@@ -342,10 +341,8 @@ class DocxEngine:
             table = doc.add_table(rows=len(rows) + (1 if headers else 0), cols=col_count)
             try:
                 valid_style = locked_doc.get_valid_table_style()
-                if valid_style and valid_style in doc.styles:
+                if valid_style and valid_style in locked_doc.valid_doc_table_styles:
                     table.style = doc.styles[valid_style]
-                elif "Table Grid" in doc.styles:
-                    table.style = doc.styles["Table Grid"]
             except (KeyError, TypeError, ValueError):
                 logger.warning(
                     "Table style could not be applied; the template table structure is retained."
@@ -507,11 +504,14 @@ class DocxEngine:
             p_cap = doc.add_paragraph(caption)
             self._apply_typography_rules(p_cap, "caption", locked_doc)
             self._apply_multilingual_properties(p_cap, caption, locked_doc)
-            try:
-                p_cap.style = doc.styles["Caption"]
-            except KeyError:
-                if p_cap.runs:
-                    p_cap.runs[0].italic = True
+            if "Caption" in locked_doc.valid_doc_paragraph_styles:
+                try:
+                    p_cap.style = doc.styles["Caption"]
+                except (KeyError, TypeError, ValueError):
+                    if p_cap.runs:
+                        p_cap.runs[0].italic = True
+            elif p_cap.runs:
+                p_cap.runs[0].italic = True
         return p
 
     def replace_placeholders_preserving_runs(
@@ -555,12 +555,13 @@ class DocxEngine:
                         process_paragraph(p)
 
         for sec in doc.sections:
-            if hasattr(sec, "_sectPr"):
-                if sec._sectPr.xpath("./w:headerReference"):
-                    for p in sec.header.paragraphs:
+            if sec.header and not sec.header.is_linked_to_previous:
+                for p in sec.header.paragraphs:
+                    if "{{" in p.text:
                         process_paragraph(p)
-                if sec._sectPr.xpath("./w:footerReference"):
-                    for p in sec.footer.paragraphs:
+            if sec.footer and not sec.footer.is_linked_to_previous:
+                for p in sec.footer.paragraphs:
+                    if "{{" in p.text:
                         process_paragraph(p)
 
         return replacements
