@@ -42,7 +42,7 @@
     "concurrently": "^10.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
-    "jsdom": "^29.1.1",
+    "jsdom": "^31.0.0",
     "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5",
