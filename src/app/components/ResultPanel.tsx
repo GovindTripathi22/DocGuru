@@ -117,6 +117,9 @@ export function ResultPanel({
 
   const valStatus = currentVal.status || (currentVal.passed ? "passed" : "failed");
   const isPdf = templateType === "pdf";
+  const hasIntentionalOverride = Boolean(
+    currentVal.components?.some((c) => c.status === "intentional_override"),
+  );
 
   const handleReverify = async () => {
     setRevalidating(true);
@@ -262,7 +265,9 @@ export function ResultPanel({
                 {isPdf
                   ? "Derived layout dimensions, typography, and margins from PDF structure."
                   : valStatus === "passed"
-                  ? "No differences were detected in the template properties checked below."
+                  ? hasIntentionalOverride
+                    ? "Your requested rule or style overrides were applied while preserving other template properties."
+                    : "No differences were detected in the template properties checked below."
                   : "One or more checked template properties differ in the generated file."}
               </p>
             </div>

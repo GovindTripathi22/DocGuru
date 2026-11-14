@@ -1,7 +1,13 @@
 import crypto from "node:crypto";
 import zlib from "node:zlib";
 import type { GenerationResultData } from "@/app/components/ResultPanel";
-import type { ResearchSource, TemplateSpec, TemplateUploadResponse } from "@/types/template";
+import type {
+  CustomRulePreferences,
+  ResearchSource,
+  RuleMode,
+  TemplateSpec,
+  TemplateUploadResponse,
+} from "@/types/template";
 
 export type SamplePresetId = "executive-docx" | "strategy-pptx" | "reference-pdf";
 
@@ -542,78 +548,307 @@ export function getSampleTemplatePreset(presetId: SamplePresetId): {
 }
 
 const INSTRUCTION_REGEXES: RegExp[] = [
-  /^formatting\s*(?:rule|tips|guidelines|instructions)\s*[:\-]?/i,
-  /^guideline[s]?\s*[:\-]/i,
-  /^instruction[s]?\s*[:\-]/i,
-  /^font\s*style\s*[:\-]/i,
-  /^font\s*(?:size|family|type)\s*[:\-]/i,
-  /^line\s*spacing\s*[:\-]/i,
-  /^margin[s]?\s*[:\-]/i,
-  /^page\s*number[s]?\s*[:\-]/i,
-  /^alignment\s*[:\-]/i,
-  /^note\s*:\s*(?:chapter|section|the\s+heading|use\s+|all\s+|do\s+not|font|keep|replace|remove|delete|write)/i,
-  /^tip[s]?\s*[:\-]/i,
-  /\b(?:must|should)\s+be\s+(?:in\s+)?(?:times\s+new\s+roman|arial|calibri|aptos|\d+\s*pt\b|bold|italic|capital|uppercase|justified|centered|left\s+aligned)/i,
-  /\b(?:times\s+new\s+roman|arial|calibri)\s*,\s*\d+\s*pt\b/i,
+  /^\s*(?:formatting\s+)?(?:rule|note|guideline|requirement|instruction|tip|format|font|margin|margins|spacing|style|case|alignment|size|paper\s*size|page\s*size|citation|abstract)s?(?:\s+\w+){0,3}\s*[:\-–]/i,
+  /\b(?:font\s+style|font\s+family|font\s+name|font\s+size|line\s+spacing|spacing\s+before|spacing\s+after|formatting\s+tips?|sub\s*heading\s*\d*\s*formatting|page\s+margins?)\b/i,
+  /\b(?:for\s+giving\s+long\s+space|do\s+not\s+use\s+space\s+bar|chapter\s*1\s*will\s*start|pages?\s+till\s+index|all\s+content\s+font\s+size|heading\s+should\s+be|numbered\s+in\s+roman|required\s+sections?)\b/i,
+  /\b(?:size\s*:\s*-?\s*\d+|style\s*:\s*(?:times\s+new\s+roman|arial|calibri|aptos|cambria|georgia)|case\s*:\s*(?:upper|lower|title|sentence)|re\s*&\s*after)\b/i,
+  /\b(?:must|shall|should)\b.*\b(?:times\s+new\s+roman|arial|calibri|aptos|cambria|georgia|verdana|font|margin|margins|spacing|size|heading|justified|centered|left\s+aligned|uppercase|roman\s+numeral|ieee|apa|a4|letter)\b/i,
+  /\b(?:times\s+new\s+roman|arial|calibri|aptos|cambria|georgia)\s*,\s*\d+\s*pt\b/i,
   /\b\d+\s*pt\s*,\s*(?:bold|italic|capital|uppercase|justified|centered|left\s+aligned|line\s+spacing)/i,
-  /\bline\s+spacing\s+(?:should\s+be\s+|of\s+)?1\.5\b/i,
-  /\bthe\s+heading\s+of\s+each\s+section\s+should\s+be\b/i,
   /\bchapter\s+\d+\s+will\s+be\s+introduction\s+part\b/i,
   /\brest\s+of\s+the\s+section\s+depends\s+on\s+your\s+topic\b/i,
   /\bwrite\s+(?:minimum|maximum|at\s+least|about)\s+\d+\s+(?:words|lines|pages|paragraphs)\b/i,
   /\bdo\s+not\s+(?:change|modify|delete|include)\s+the\s+(?:format|font|margins|header|footer)\b/i,
+  /^\s*[\(\[]\s*(?:font|size|bold|italic|times\s+new\s+roman|arial|calibri|write\s+approx|enter\s+|insert\s+|approx\.?\s*\d+\s*words).*[\)\]]\s*$/i,
 ];
 
 export function isInstructionOrRuleText(text: string): boolean {
   const clean = text.trim();
-  if (!clean || clean.length > 420) return false;
+  if (!clean || clean.length > 450) return false;
   return INSTRUCTION_REGEXES.some((rx) => rx.test(clean));
 }
 
-function parseTypographyRulesFromTexts(
+const KNOWN_FONT_PATTERNS: Array<[RegExp, string]> = [
+  [/\btimes\s+new\s+roman\b/i, "Times New Roman"],
+  [/\baptos\s+display\b/i, "Aptos Display"],
+  [/\baptos\b/i, "Aptos"],
+  [/\barial\b/i, "Arial"],
+  [/\bcalibri\b/i, "Calibri"],
+  [/\bcambria\b/i, "Cambria"],
+  [/\bgeorgia\b/i, "Georgia"],
+  [/\bverdana\b/i, "Verdana"],
+  [/\btahoma\b/i, "Tahoma"],
+  [/\bgaramond\b/i, "Garamond"],
+  [/\btrebuchet\s+ms\b/i, "Trebuchet MS"],
+  [/\bbook\s+antiqua\b/i, "Book Antiqua"],
+  [/\bcourier\s+new\b/i, "Courier New"],
+  [/\bhelvetica\b/i, "Helvetica"],
+];
+
+function detectFontInText(text: string): string | null {
+  for (const [rx, canonical] of KNOWN_FONT_PATTERNS) {
+    if (rx.test(text)) return canonical;
+  }
+  const m = text.match(
+    /(?:font\s+(?:style|family|name)|typeface|font)\s*[:\-]\s*([A-Za-z][A-Za-z\s]{1,30}?)(?:\s*\(|\s*,|\s*;|\s+font|\s+size|\s+spacing|\n|$)/i,
+  );
+  if (m?.[1]) {
+    const cand = m[1].trim();
+    if (cand.length >= 2 && cand.length <= 32 && !["size", "style", "color", "must", "should"].includes(cand.toLowerCase())) {
+      return cand;
+    }
+  }
+  return null;
+}
+
+function detectAlignmentInText(text: string): "left" | "center" | "right" | "justify" | null {
+  const low = text.toLowerCase();
+  if (/\bjustif(?:y|ied)\b|\bboth\b(?=\s+align)/.test(low)) return "justify";
+  if (/\bcent(?:er|re|ered|red)\b/.test(low)) return "center";
+  if (/\bright[\s\-]+align(?:ed)?\b|\balign\s*[:\-]\s*right\b/.test(low)) return "right";
+  if (/\bleft[\s\-]+align(?:ed)?\b|\balign\s*[:\-]\s*left\b/.test(low)) return "left";
+  return null;
+}
+
+function detectLineSpacingInText(text: string): number | null {
+  const low = text.toLowerCase();
+  if (/\bdouble[\s\-]*(?:line\s*)?spac(?:ed|ing)\b/.test(low)) return 2.0;
+  if (/\bsingle[\s\-]*(?:line\s*)?spac(?:ed|ing)\b/.test(low)) return 1.0;
+  const m = low.match(/(?:line\s+spacing|spacing)\s*(?:should\s+be|must\s+be|of|is|=|:|-)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:x|lines?)?/);
+  if (m?.[1]) {
+    const val = Number(m[1]);
+    if (val >= 1.0 && val <= 3.0) return val;
+  }
+  const m2 = low.match(/\b(1\.0|1\.15|1\.25|1\.5|2\.0)\s*(?:line\s*spacing|spacing)\b/);
+  if (m2?.[1]) return Number(m2[1]);
+  return null;
+}
+
+function toInches(value: number, unit?: string): number {
+  const u = (unit || "in").toLowerCase();
+  if (u.startsWith("cm")) return Number((value / 2.54).toFixed(3));
+  if (u.startsWith("mm")) return Number((value / 25.4).toFixed(3));
+  if (u.startsWith("pt")) return Number((value / 72.0).toFixed(3));
+  return Number(value.toFixed(3));
+}
+
+interface ParsedStructuralRules {
+  margins_in?: { top?: number; bottom?: number; left?: number; right?: number };
+  page_size?: "A4" | "Letter" | "Legal";
+  citation_style?: "IEEE" | "APA" | "numeric";
+  require_tables?: boolean;
+  required_sections?: string[];
+}
+
+function parseDocumentRulesFromTexts(
   texts: string[],
   defaultFont: string,
-): Record<string, string | number | boolean> {
-  const fullText = texts.join("\n");
-  const rules: Record<string, string | number | boolean> = {
-    font_family: /times\s+new\s+roman/i.test(fullText) ? "Times New Roman" : defaultFont || "Times New Roman",
-    heading1_size_pt: 14,
+  isInstitutional: boolean,
+): {
+  typography: Record<string, string | number | boolean>;
+  structural: ParsedStructuralRules;
+  categories: string[];
+  hasExplicitRules: boolean;
+} {
+  const ruleLines = texts.map((t) => t.trim()).filter((t) => t && isInstructionOrRuleText(t));
+  const fullRuleText = ruleLines.join("\n");
+  const hasExplicitRules = ruleLines.length > 0;
+
+  const baseLs = isInstitutional ? 1.5 : 1.15;
+  const baseBodyAlign = isInstitutional ? "justify" : "left";
+  const baseH1Align = isInstitutional ? "center" : "left";
+  const h1CaseDefault =
+    /case\s*:\s*uppercase|all\s+caps|capital/i.test(fullRuleText) ||
+    (isInstitutional && texts.some((l) => /CHAPTER\s*1|1\.\s*INTRODUCTION/.test(l)))
+      ? "uppercase"
+      : "normal";
+
+  const typography: Record<string, string | number | boolean> = {
+    font_family: defaultFont || (isInstitutional ? "Times New Roman" : "Calibri"),
+    heading1_size_pt: isInstitutional ? 14 : 16,
     heading1_bold: true,
-    heading1_uppercase: true,
-    heading1_align: "center",
-    heading2_size_pt: 12,
+    heading1_case: h1CaseDefault,
+    heading1_uppercase: h1CaseDefault === "uppercase",
+    heading1_align: baseH1Align,
+    heading2_size_pt: isInstitutional ? 12 : 13,
     heading2_bold: true,
     heading2_align: "left",
-    body_size_pt: 12,
-    body_align: "justify",
-    line_spacing: 1.5,
-    caption_size_pt: 11,
+    body_size_pt: isInstitutional ? 12 : 11,
+    body_align: baseBodyAlign,
+    line_spacing: baseLs,
+    caption_size_pt: isInstitutional ? 11 : 10,
   };
 
-  for (const t of texts) {
-    const lower = t.toLowerCase();
-    const ptMatches = Array.from(lower.matchAll(/(\d+)\s*pt/g)).map((m) => Number(m[1]));
-    if (ptMatches.length > 0) {
-      if (lower.includes("heading") || lower.includes("chapter") || lower.includes("title")) {
-        if (lower.includes("sub") || lower.includes("section")) {
-          rules.heading2_size_pt = ptMatches[0];
-        } else {
-          rules.heading1_size_pt = ptMatches[0];
-        }
-      } else if (lower.includes("figure") || lower.includes("table") || lower.includes("caption")) {
-        rules.caption_size_pt = ptMatches[0];
-      } else if (lower.includes("body") || lower.includes("content") || lower.includes("paragraph") || lower.includes("text")) {
-        rules.body_size_pt = ptMatches[0];
-      }
-    }
-    if (lower.includes("1.5") && (lower.includes("spacing") || lower.includes("line"))) {
-      rules.line_spacing = 1.5;
-    } else if ((lower.includes("double") || lower.includes("2.0")) && lower.includes("spacing")) {
-      rules.line_spacing = 2.0;
+  const structural: ParsedStructuralRules = {};
+  const categories: string[] = [];
+  const addCat = (cat: string) => {
+    if (!categories.includes(cat)) categories.push(cat);
+  };
+
+  // Global font pass (non-role-specific rule lines first)
+  for (const line of ruleLines) {
+    const low = line.toLowerCase();
+    const isRoleSpecific = /(?:heading|chapter|title|sub|caption|figure|table|body|content|paragraph)/.test(low);
+    const font = detectFontInText(line);
+    if (font && !isRoleSpecific) {
+      typography.font_family = font;
+      addCat("Typography");
     }
   }
 
-  return rules;
+  for (const line of ruleLines) {
+    const low = line.toLowerCase();
+    const isH2 = /(?:sub\s*-?\s*heading|subheading|heading\s*2|\bh2\b)/.test(low);
+    const isH1 = !isH2 && /(?:heading|chapter|title)/.test(low);
+
+    const font = detectFontInText(line);
+    if (font) {
+      typography.font_family = font;
+      addCat("Typography");
+    }
+
+    // Parse font sizes and alignments per comma/semicolon clause so mixed sentences
+    // (e.g. "Body prose must use Aptos 11pt with structured numbered section headings")
+    // attribute properties to the right role.
+    const clauses = low.split(/[,;]+/).map((c) => c.trim()).filter(Boolean);
+    const pickClauseRole = (clause: string): "h2" | "h1" | "caption" | "body" | "general" => {
+      const cH2 = /(?:sub\s*-?\s*heading|subheading|heading\s*2|\bh2\b)/.test(clause);
+      const cH1 = !cH2 && /(?:heading|chapter|title)/.test(clause);
+      const cCap = /(?:caption|figure|table\s+caption)/.test(clause);
+      const cBody = /(?:body|content|paragraph|prose|text|abstract)/.test(clause);
+      if (cH2) return "h2";
+      if (cCap && !cH1 && !cBody) return "caption";
+      if (cH1 && cBody) {
+        const ptIdx = clause.search(/\d+(?:\.\d+)?\s*pt\b/);
+        const bIdx = clause.search(/\b(?:body|content|paragraph|prose|text|abstract)\b/);
+        const hIdx = clause.search(/\b(?:heading|chapter|title)\b/);
+        if (ptIdx >= 0) {
+          return Math.abs(ptIdx - bIdx) <= Math.abs(ptIdx - hIdx) ? "body" : "h1";
+        }
+        return bIdx <= hIdx ? "body" : "h1";
+      }
+      if (cH1) return "h1";
+      if (cBody) return "body";
+      return "general";
+    };
+
+    for (const clause of clauses) {
+      const clauseRole = pickClauseRole(clause);
+      const ptMatches = Array.from(clause.matchAll(/(\d+(?:\.\d+)?)\s*pt\b/g)).map((m) => Number(m[1]));
+      if (ptMatches.length === 0) {
+        const szM = clause.match(/(?:for\s+all\s+content\s+font\s+size|font\s+size|size)\s*[:\-–]*\s*(\d{1,2}(?:\.\d+)?)\b/);
+        if (szM?.[1]) ptMatches.push(Number(szM[1]));
+      }
+      if (ptMatches.length > 0 && ptMatches[0] >= 8 && ptMatches[0] <= 48) {
+        const sz = ptMatches[0];
+        if (clauseRole === "h2") typography.heading2_size_pt = sz;
+        else if (clauseRole === "h1") typography.heading1_size_pt = sz;
+        else if (clauseRole === "caption") typography.caption_size_pt = sz;
+        else typography.body_size_pt = sz;
+        addCat("Font Size");
+      }
+
+      const align = detectAlignmentInText(clause);
+      if (align) {
+        if (clauseRole === "h1") typography.heading1_align = align;
+        else if (clauseRole === "h2") typography.heading2_align = align;
+        else typography.body_align = align;
+        addCat("Alignment");
+      }
+    }
+
+    const ls = detectLineSpacingInText(line);
+    if (ls !== null) {
+      typography.line_spacing = ls;
+      addCat("Line Spacing");
+    }
+
+    if (isH1) {
+      if (/\b(?:uppercase|upper\s*case|all\s*caps|capital(?:s|ized)?)\b/.test(low)) {
+        typography.heading1_case = "uppercase";
+        typography.heading1_uppercase = true;
+      } else if (/\btitle\s*case\b/.test(low)) {
+        typography.heading1_case = "titlecase";
+        typography.heading1_uppercase = false;
+      } else if (/\bsentence\s*case|normal\s*case\b/.test(low)) {
+        typography.heading1_case = "normal";
+        typography.heading1_uppercase = false;
+      }
+    }
+
+    // Margins
+    const sideMargins: { top?: number; bottom?: number; left?: number; right?: number } = {};
+    for (const side of ["top", "bottom", "left", "right"] as const) {
+      const sm = low.match(
+        new RegExp(`\\b${side}\\s*(?:margin)?\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)\\s*(inches?|in|"|cm|mm|pt)?\\b`),
+      );
+      if (sm?.[1] && (low.includes("margin") || Boolean(sm[2]))) {
+        const val = toInches(Number(sm[1]), sm[2]);
+        if (val >= 0.25 && val <= 3.0) {
+          sideMargins[side] = val;
+        }
+      }
+    }
+    if (Object.keys(sideMargins).length > 0) {
+      structural.margins_in = { ...(structural.margins_in || {}), ...sideMargins };
+      addCat("Margins");
+    } else if (low.includes("margin")) {
+      const gm = low.match(
+        /margins?\s*(?:of|should\s+be|must\s+be|:|-)?\s*(\d+(?:\.\d+)?)\s*(inches?|in|"|cm|mm|pt)?/,
+      );
+      if (gm?.[1]) {
+        const val = toInches(Number(gm[1]), gm[2]);
+        if (val >= 0.25 && val <= 3.0) {
+          structural.margins_in = { top: val, bottom: val, left: val, right: val };
+          addCat("Margins");
+        }
+      }
+    }
+
+    // Page size
+    if (/\ba4\b/.test(low)) {
+      structural.page_size = "A4";
+      addCat("Page Size");
+    } else if (/\blegal\b/.test(low)) {
+      structural.page_size = "Legal";
+      addCat("Page Size");
+    } else if (/\bletter\b/.test(low) && /\b(?:size|paper|page)\b/.test(low)) {
+      structural.page_size = "Letter";
+      addCat("Page Size");
+    }
+
+    // Citations / Tables / Required Sections
+    if (/\bieee\b/.test(low)) {
+      structural.citation_style = "IEEE";
+      addCat("Citations");
+    } else if (/\bapa\b/.test(low)) {
+      structural.citation_style = "APA";
+      addCat("Citations");
+    } else if (/bracketed\s+numeric|\[\d+\]/.test(low)) {
+      structural.citation_style = "numeric";
+      addCat("Citations");
+    }
+
+    if (low.includes("table")) {
+      structural.require_tables = true;
+    }
+
+    const reqSecM = line.match(
+      /(?:required\s+sections?|must\s+include\s+(?:sections?|chapters?)|chapters?)\s*[:\-]\s*(.+)$/i,
+    );
+    if (reqSecM?.[1]) {
+      const items = reqSecM[1]
+        .split(/[,;|]/)
+        .map((s) => s.replace(/^[\s.;:]+|[\s.;:]+$/g, ""))
+        .filter((s) => s.length >= 2 && s.length <= 80);
+      if (items.length > 0) {
+        structural.required_sections = items;
+        addCat("Structure");
+      }
+    }
+  }
+
+  return { typography, structural, categories, hasExplicitRules };
 }
 
 // --- Analyzer & Fingerprinter ---
@@ -747,8 +982,20 @@ export function analyzeTemplateBuffer(
     }
 
     // Paragraphs -> outline, rules & institutional detection
-    const paragraphs = Array.from(docXml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)).map((m) => m[0]);
+    // Also extract textbox & header/footer paragraphs so embedded rules inside textboxes are caught
+    const docWithoutTxbx = docXml.replace(/<w:txbxContent>[\s\S]*?<\/w:txbxContent>/g, "");
+    const txbxParagraphs = Array.from(docXml.matchAll(/<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/g)).flatMap(
+      (m) => Array.from(m[1].matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)).map((pm) => pm[0]),
+    );
+    const paragraphs = Array.from(docWithoutTxbx.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)).map((m) => m[0]);
     const paraTexts = paragraphs.map((pXml) => stripXmlTags(pXml));
+    const txbxTexts = txbxParagraphs.map((pXml) => stripXmlTags(pXml));
+    const hfTexts = [
+      ...Array.from(headerXml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)).map((m) => stripXmlTags(m[0])),
+      ...Array.from(footerXml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)).map((m) => stripXmlTags(m[0])),
+    ];
+    const allScannedTexts = [...paraTexts, ...txbxTexts, ...hfTexts].filter(Boolean);
+
     const outline: string[] = [];
     const rules: string[] = [];
     const instKeywords = [
@@ -763,8 +1010,17 @@ export function analyzeTemplateBuffer(
       "project report",
       "bachelor of",
     ];
-    const fullLower = paraTexts.join(" \n ").toLowerCase();
+    const fullLower = allScannedTexts.join(" \n ").toLowerCase();
     const matchedInstCount = instKeywords.filter((kw) => fullLower.includes(kw)).length;
+
+    for (const text of [...txbxTexts, ...hfTexts]) {
+      if (text && isInstructionOrRuleText(text)) {
+        const cleanedRule = text.replace(/^Formatting Rule:\s*/i, "").trim();
+        if (cleanedRule && !rules.includes(cleanedRule) && rules.length < 12) {
+          rules.push(cleanedRule);
+        }
+      }
+    }
 
     for (let i = 0; i < paragraphs.length; i++) {
       const pXml = paragraphs[i];
@@ -772,7 +1028,7 @@ export function analyzeTemplateBuffer(
       if (!text) continue;
       if (isInstructionOrRuleText(text)) {
         const cleanedRule = text.replace(/^Formatting Rule:\s*/i, "").trim();
-        if (cleanedRule && !rules.includes(cleanedRule)) {
+        if (cleanedRule && !rules.includes(cleanedRule) && rules.length < 12) {
           rules.push(cleanedRule);
         }
         continue;
@@ -814,10 +1070,13 @@ export function analyzeTemplateBuffer(
     }
 
     const isInstitutional = matchedInstCount >= 2 || bodyAnchorIdx !== null;
+    const defaultFont = isInstitutional ? "Times New Roman" : uniqueFonts[0] || "Calibri";
+    const parsedDoc = parseDocumentRulesFromTexts(allScannedTexts, defaultFont, isInstitutional);
+    const hasEmbeddedRules = parsedDoc.hasExplicitRules || rules.length > 0;
     const parsedTypographyRules =
-      isInstitutional || rules.length > 0
-        ? parseTypographyRulesFromTexts(paraTexts, uniqueFonts[0] || "Times New Roman")
-        : undefined;
+      isInstitutional || hasEmbeddedRules ? parsedDoc.typography : undefined;
+    const parsedStructuralRules =
+      isInstitutional || hasEmbeddedRules ? parsedDoc.structural : undefined;
 
     if (rules.length === 0) {
       rules.push(
@@ -840,7 +1099,10 @@ export function analyzeTemplateBuffer(
       style_hash: styleHash,
       is_institutional_template: isInstitutional,
       body_anchor_index: bodyAnchorIdx,
+      has_embedded_rules: hasEmbeddedRules,
+      detected_rule_categories: parsedDoc.categories,
       parsed_typography_rules: parsedTypographyRules,
+      parsed_structural_rules: parsedStructuralRules as Record<string, unknown> | undefined,
       page: {
         width_pt: widthPt,
         height_pt: heightPt,
@@ -1147,22 +1409,68 @@ function buildResearchSources(topic: string): ResearchSource[] {
   ];
 }
 
+interface DocSectionSynthOptions {
+  customInstructions?: string;
+  researchSources?: ResearchSource[];
+  selectedRules?: string[];
+  requiredSections?: string[];
+  documentOutline?: string[];
+  citationStyle?: "IEEE" | "APA" | "numeric";
+  requireTables?: boolean;
+  ruleMode?: RuleMode;
+  hasEmbeddedRules?: boolean;
+}
+
+function formatCitationMarker(
+  index: number,
+  style?: "IEEE" | "APA" | "numeric",
+  source?: ResearchSource,
+): string {
+  if (style === "APA") {
+    const year = source?.published_date?.slice(0, 4) || "2026";
+    const org = source?.title.split(":")[0]?.trim() || `Source ${index}`;
+    return ` (${org}, ${year})`;
+  }
+  return ` [${index}]`;
+}
+
 function synthesizeDocumentSections(
   topic: string,
   sectionCount: number,
-  customInstructions?: string,
-  researchSources?: ResearchSource[],
-  selectedRules?: string[],
+  customInstructionsOrOpts?: string | DocSectionSynthOptions,
+  researchSourcesArg?: ResearchSource[],
+  selectedRulesArg?: string[],
 ): PlannedSectionItem[] {
-  const cite1 = researchSources?.length ? " [1]" : "";
-  const cite2 = researchSources && researchSources.length > 1 ? " [2]" : "";
-  const cite3 = researchSources && researchSources.length > 2 ? " [3]" : "";
+  const opts: DocSectionSynthOptions =
+    typeof customInstructionsOrOpts === "object" && customInstructionsOrOpts !== null
+      ? customInstructionsOrOpts
+      : {
+          customInstructions: customInstructionsOrOpts,
+          researchSources: researchSourcesArg,
+          selectedRules: selectedRulesArg,
+        };
+
+  const {
+    customInstructions,
+    researchSources,
+    selectedRules,
+    requiredSections,
+    documentOutline,
+    citationStyle,
+    requireTables,
+    ruleMode,
+    hasEmbeddedRules,
+  } = opts;
+
+  const cite1 = researchSources?.length ? formatCitationMarker(1, citationStyle, researchSources[0]) : "";
+  const cite2 = researchSources && researchSources.length > 1 ? formatCitationMarker(2, citationStyle, researchSources[1]) : "";
+  const cite3 = researchSources && researchSources.length > 2 ? formatCitationMarker(3, citationStyle, researchSources[2]) : "";
   const focusNote = customInstructions
     ? ` Alignment focus: ${customInstructions}.`
     : "";
   const ruleNote =
-    selectedRules && selectedRules.length > 0
-      ? ` Adheres to ${selectedRules.length} active template formatting guideline(s).`
+    selectedRules && selectedRules.length > 0 && ruleMode !== "custom"
+      ? ` Enforces ${selectedRules.length} formatting rule(s) extracted from the template.`
       : "";
 
   const templates: PlannedSectionItem[] = [
@@ -1170,12 +1478,12 @@ function synthesizeDocumentSections(
       title: `1. Executive Summary: ${topic}`,
       heading_style: "Heading 1",
       paragraphs: [
-        `This document provides a structured architectural and operational assessment of ${topic}.${focusNote}${ruleNote} All typography, section hierarchy, page geometry, and table definitions inherit directly from the base template specification.${cite1}`,
+        `This document provides a structured architectural and operational assessment of ${topic}.${focusNote}${ruleNote} All typography, section hierarchy, page geometry, and table definitions conform strictly to the active formatting specification.${cite1}`,
         `Key findings demonstrate that disciplined implementation of ${topic} reduces operational variance, strengthens observability across critical workflows, and establishes measurable verification gates prior to production rollout.${cite2}`,
       ],
       bullets: [
         `Primary Objective: Establish repeatable architectural patterns and governance controls for ${topic}.`,
-        "Baseline Invariants: Preserve template typography, margin geometry, and structural styles without direct formatting drift.",
+        "Baseline Invariants: Preserve typography, margin geometry, and structural styles without formatting drift.",
         "Deliverable Scope: End-to-end design analysis, comparative evaluation matrix, and phased execution milestones.",
       ],
     },
@@ -1226,10 +1534,10 @@ function synthesizeDocumentSections(
       heading_style: "Heading 1",
       paragraphs: [
         `Successful adoption of ${topic} should proceed in three incremental phases: baseline instrumentation, automated invariant enforcement, and full production cutover.${cite3}`,
-        `In conclusion, combining structured content planning with strict template inheritance ensures high-clarity deliverables that remain faithful to organizational design standards.`,
+        `In conclusion, combining structured content planning with strict rule enforcement ensures high-clarity deliverables that remain faithful to organizational design standards.`,
       ],
       bullets: [
-        "Phase 1 (Weeks 1–2): Establish baseline metrics, schema contracts, and template lock baselines.",
+        "Phase 1 (Weeks 1–2): Establish baseline metrics, schema contracts, and rule lock baselines.",
         "Phase 2 (Weeks 3–4): Integrate automated validation gates and canary workload verification.",
         "Phase 3 (Weeks 5–6): Complete production rollout with continuous drift monitoring.",
       ],
@@ -1252,13 +1560,45 @@ function synthesizeDocumentSections(
       title: "8. Governance, Quality Assurance & Sign-Off Criteria",
       heading_style: "Heading 1",
       paragraphs: [
-        `Final release sign-off requires passing all automated structural checks, zero critical accessibility violations, and verified style fingerprint parity against the reference template.`,
+        `Final release sign-off requires passing all automated structural checks, zero critical accessibility violations, and verified style fingerprint parity against the reference specification.`,
       ],
     },
   ];
 
-  const count = Math.max(2, Math.min(templates.length, sectionCount));
-  const selected = templates.slice(0, count);
+  // If document rules specify required sections (or template has an explicit outline with rules), honor those headings
+  const activeOutline =
+    ruleMode !== "custom" && requiredSections && requiredSections.length > 0
+      ? requiredSections
+      : ruleMode !== "custom" && hasEmbeddedRules && documentOutline && documentOutline.length >= 2
+      ? documentOutline.filter((h) => !/^enterprise|^template|^untitled/i.test(h))
+      : undefined;
+
+  let selected: PlannedSectionItem[];
+  if (activeOutline && activeOutline.length >= 2) {
+    selected = activeOutline.slice(0, Math.max(sectionCount, activeOutline.length)).map((secTitle, idx) => {
+      const base = templates[idx % templates.length];
+      return {
+        ...base,
+        title: secTitle,
+        paragraphs: base.paragraphs.map((p, pIdx) =>
+          pIdx === 0
+            ? `Section focus — ${secTitle}: ${p}`
+            : p,
+        ),
+      };
+    });
+  } else {
+    const count = Math.max(2, Math.min(templates.length, sectionCount));
+    selected = templates.slice(0, count);
+  }
+
+  if (requireTables && !selected.some((s) => Boolean(s.table_data)) && selected.length > 0) {
+    const targetIdx = Math.min(2, selected.length - 1);
+    selected[targetIdx] = {
+      ...selected[targetIdx],
+      table_data: templates[2].table_data,
+    };
+  }
 
   if (researchSources && researchSources.length > 0) {
     selected.push({
@@ -1582,16 +1922,243 @@ function substituteCoverPlaceholdersInParagraph(
   return pXml;
 }
 
+interface EffectiveDocxRules {
+  mode: RuleMode;
+  enforce: boolean;
+  typography: Record<string, unknown>;
+  structural: ParsedStructuralRules;
+}
+
+function resolveEffectiveDocxRules(
+  spec: TemplateSpec,
+  input: StandaloneGenerateInput,
+): EffectiveDocxRules {
+  const mode: RuleMode = input.rule_mode || "document";
+  const isInst = Boolean(spec.is_institutional_template);
+  const defaultFont =
+    (spec.parsed_typography_rules?.font_family as string) ||
+    spec.fonts?.body ||
+    spec.fonts?.default ||
+    (isInst ? "Times New Roman" : "Calibri");
+
+  if (mode === "custom") {
+    const baseline = parseDocumentRulesFromTexts([], defaultFont, isInst);
+    const cr = input.custom_rules;
+    const hasCustom = Boolean(
+      cr &&
+        Object.values(cr).some(
+          (v) => v !== undefined && v !== null && String(v).trim() !== "",
+        ),
+    );
+    if (cr) {
+      if (cr.font_name) baseline.typography.font_family = cr.font_name;
+      if (cr.heading1_size_pt !== undefined) baseline.typography.heading1_size_pt = cr.heading1_size_pt;
+      if (cr.heading2_size_pt !== undefined) baseline.typography.heading2_size_pt = cr.heading2_size_pt;
+      if (cr.body_size_pt !== undefined) baseline.typography.body_size_pt = cr.body_size_pt;
+      if (cr.line_spacing !== undefined) baseline.typography.line_spacing = cr.line_spacing;
+      if (cr.body_alignment) baseline.typography.body_align = cr.body_alignment;
+      if (cr.heading1_alignment) baseline.typography.heading1_align = cr.heading1_alignment;
+      if (cr.heading1_case) {
+        baseline.typography.heading1_case = cr.heading1_case;
+        baseline.typography.heading1_uppercase = cr.heading1_case === "uppercase";
+      }
+      if (cr.margin_inches !== undefined) {
+        baseline.structural.margins_in = {
+          top: cr.margin_inches,
+          bottom: cr.margin_inches,
+          left: cr.margin_inches,
+          right: cr.margin_inches,
+        };
+      }
+      if (cr.page_size) {
+        baseline.structural.page_size = cr.page_size;
+      }
+    }
+    return {
+      mode,
+      enforce: hasCustom,
+      typography: baseline.typography,
+      structural: baseline.structural,
+    };
+  }
+
+  // mode === "document"
+  if (input.enabled_rule_indices && spec.extracted_rules?.length) {
+    const selectedLines = spec.extracted_rules.filter((_, idx) =>
+      input.enabled_rule_indices!.includes(idx),
+    );
+    const reparsed = parseDocumentRulesFromTexts(selectedLines, defaultFont, isInst);
+    return {
+      mode,
+      enforce: reparsed.hasExplicitRules || isInst,
+      typography: reparsed.typography,
+      structural: reparsed.structural,
+    };
+  }
+
+  const baseline = parseDocumentRulesFromTexts([], defaultFont, isInst);
+  return {
+    mode,
+    enforce: Boolean(
+      spec.has_embedded_rules || isInst || spec.parsed_typography_rules,
+    ),
+    typography: spec.parsed_typography_rules || baseline.typography,
+    structural: (spec.parsed_structural_rules as ParsedStructuralRules) || {},
+  };
+}
+
+function toWordAlign(align: unknown): "left" | "center" | "right" | "both" {
+  const s = String(align || "left").toLowerCase();
+  if (s === "justify" || s === "both") return "both";
+  if (s === "center") return "center";
+  if (s === "right") return "right";
+  return "left";
+}
+
+function applyHeadingCase(text: string, caseRule: unknown): string {
+  const c = String(caseRule || "normal").toLowerCase();
+  if (c === "uppercase") return text.toUpperCase();
+  if (c === "titlecase") {
+    return text.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }
+  return text;
+}
+
+function syncStylesXmlWithRules(
+  stylesXml: string,
+  typography: Record<string, unknown>,
+): string {
+  const fontFamily = escapeXml(String(typography.font_family || "Times New Roman"));
+  const h1HalfPt = Math.round(Number(typography.heading1_size_pt || 14) * 2);
+  const titleHalfPt = Math.max(h1HalfPt + 4, 28);
+  const h2HalfPt = Math.round(Number(typography.heading2_size_pt || 12) * 2);
+  const bodyHalfPt = Math.round(Number(typography.body_size_pt || 12) * 2);
+  const lineTwips = Math.round(Number(typography.line_spacing || 1.5) * 240);
+  const h1Jc = toWordAlign(typography.heading1_align);
+  const bodyJc = toWordAlign(typography.body_align);
+
+  let updated = stylesXml;
+
+  // Update docDefaults rFonts + sz
+  if (updated.includes("<w:docDefaults>")) {
+    updated = updated.replace(/<w:docDefaults>[\s\S]*?<\/w:docDefaults>/, (dd) => {
+      let nextDd = dd.replace(
+        /<w:rFonts\b[^>]*\/>/,
+        `<w:rFonts w:ascii="${fontFamily}" w:hAnsi="${fontFamily}" w:cs="${fontFamily}"/>`,
+      );
+      nextDd = nextDd.replace(/<w:sz\b[^>]*\/>/, `<w:sz w:val="${bodyHalfPt}"/>`);
+      return nextDd;
+    });
+  }
+
+  const updateStyleBlock = (
+    xml: string,
+    styleId: string,
+    halfPt: number,
+    jc: string,
+    includeSpacing: boolean,
+  ): string => {
+    const rx = new RegExp(`(<w:style\\b[^>]*w:styleId="${styleId}"[^>]*>[\\s\\S]*?<\\/w:style>)`, "i");
+    if (!rx.test(xml)) return xml;
+    return xml.replace(rx, (block) => {
+      let b = block;
+      if (/<w:rFonts\b[^>]*\/>/.test(b)) {
+        b = b.replace(
+          /<w:rFonts\b[^>]*\/>/g,
+          `<w:rFonts w:ascii="${fontFamily}" w:hAnsi="${fontFamily}" w:cs="${fontFamily}"/>`,
+        );
+      } else if (/<w:rPr>/.test(b)) {
+        b = b.replace(
+          /<w:rPr>/,
+          `<w:rPr><w:rFonts w:ascii="${fontFamily}" w:hAnsi="${fontFamily}" w:cs="${fontFamily}"/>`,
+        );
+      }
+      if (/<w:sz\b[^>]*\/>/.test(b)) {
+        b = b.replace(/<w:sz\b[^>]*\/>/g, `<w:sz w:val="${halfPt}"/><w:szCs w:val="${halfPt}"/>`);
+      } else if (/<w:rPr>/.test(b)) {
+        b = b.replace(/<\/w:rPr>/, `<w:sz w:val="${halfPt}"/><w:szCs w:val="${halfPt}"/></w:rPr>`);
+      }
+      const pPrContent = includeSpacing
+        ? `<w:jc w:val="${jc}"/><w:spacing w:line="${lineTwips}" w:lineRule="auto"/>`
+        : `<w:jc w:val="${jc}"/>`;
+      if (/<w:pPr>[\s\S]*?<\/w:pPr>/.test(b)) {
+        b = b.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/, `<w:pPr>${pPrContent}</w:pPr>`);
+      } else {
+        b = b.replace(/(<w:name\b[^>]*\/>)/, `$1<w:pPr>${pPrContent}</w:pPr>`);
+      }
+      return b;
+    });
+  };
+
+  updated = updateStyleBlock(updated, "Normal", bodyHalfPt, bodyJc, true);
+  updated = updateStyleBlock(updated, "Title", titleHalfPt, h1Jc, false);
+  updated = updateStyleBlock(updated, "Heading1", h1HalfPt, h1Jc, true);
+  updated = updateStyleBlock(updated, "Heading2", h2HalfPt, toWordAlign(typography.heading2_align), true);
+  updated = updateStyleBlock(updated, "Heading3", h2HalfPt, "left", true);
+
+  return updated;
+}
+
+function syncSectPrWithStructuralRules(
+  sectPrMatch: string,
+  structural?: ParsedStructuralRules,
+): string {
+  if (!structural) return sectPrMatch;
+  let updated = sectPrMatch;
+
+  if (structural.page_size) {
+    const dims: Record<string, [number, number]> = {
+      A4: [11906, 16838],
+      Letter: [12240, 15840],
+      Legal: [12240, 20160],
+    };
+    const d = dims[structural.page_size];
+    if (d) {
+      if (/<w:pgSz\b[^>]*\/>/.test(updated)) {
+        updated = updated.replace(/<w:pgSz\b[^>]*\/>/, `<w:pgSz w:w="${d[0]}" w:h="${d[1]}" w:orient="portrait"/>`);
+      } else {
+        updated = updated.replace("</w:sectPr>", `<w:pgSz w:w="${d[0]}" w:h="${d[1]}" w:orient="portrait"/></w:sectPr>`);
+      }
+    }
+  }
+
+  if (structural.margins_in && Object.keys(structural.margins_in).length > 0) {
+    const existingMar = updated.match(/<w:pgMar\b([^>]*)\/>/)?.[1] || "";
+    const readSide = (side: "top" | "right" | "bottom" | "left") => {
+      const overrideVal = structural.margins_in?.[side];
+      if (typeof overrideVal === "number" && overrideVal > 0) {
+        return Math.round(overrideVal * 1440);
+      }
+      const m = existingMar.match(new RegExp(`w:${side}="(\\d+)"`));
+      return m ? Number(m[1]) : 1440;
+    };
+    const topT = readSide("top");
+    const rightT = readSide("right");
+    const bottomT = readSide("bottom");
+    const leftT = readSide("left");
+    const newPgMar = `<w:pgMar w:top="${topT}" w:right="${rightT}" w:bottom="${bottomT}" w:left="${leftT}"/>`;
+    if (/<w:pgMar\b[^>]*\/>/.test(updated)) {
+      updated = updated.replace(/<w:pgMar\b[^>]*\/>/, newPgMar);
+    } else {
+      updated = updated.replace("</w:sectPr>", `${newPgMar}</w:sectPr>`);
+    }
+  }
+
+  return updated;
+}
+
 function buildDocxFromPlan(
   templateRecord: StoredTemplateRecord,
   title: string,
   sections: PlannedSectionItem[],
   options: {
     mode?: string;
+    templateMode?: string;
     editAction?: "append" | "insert_after";
     editTargetIndex?: number;
     override?: { target: string; value: string };
     metadata?: ExtractedDocMetadata;
+    effectiveRules?: EffectiveDocxRules;
   },
 ): Buffer {
   const entries = new Map<string, Buffer>(templateRecord.zipEntries);
@@ -1615,17 +2182,26 @@ function buildDocxFromPlan(
     }
   }
 
-  // Apply intentional override to styles.xml if requested
+  const isInstitutional = Boolean(templateRecord.spec.is_institutional_template);
+  const effective = options.effectiveRules;
+  const rules = effective ? effective.typography : templateRecord.spec.parsed_typography_rules;
+  const enforceRules = Boolean(effective?.enforce || rules || isInstitutional);
+
+  // Synchronize word/styles.xml when document or custom rules are enforced
+  let stylesXml = entries.get("word/styles.xml")?.toString("utf8") || "";
+  if (stylesXml && effective?.enforce && rules) {
+    stylesXml = syncStylesXmlWithRules(stylesXml, rules);
+    entries.set("word/styles.xml", Buffer.from(stylesXml, "utf8"));
+  }
+
+  // Apply intentional color override to styles.xml if requested
   const overrideHex = options.override?.value.replace("#", "").toUpperCase() || "";
-  if (options.override && options.override.target === "heading_color") {
-    const stylesXml = entries.get("word/styles.xml")?.toString("utf8") || "";
-    if (stylesXml) {
-      const updatedStyles = stylesXml.replace(
-        /<w:color w:val="[0-9A-Fa-f]{6}"\/>/g,
-        `<w:color w:val="${escapeXml(overrideHex)}"/>`,
-      );
-      entries.set("word/styles.xml", Buffer.from(updatedStyles, "utf8"));
-    }
+  if (options.override && options.override.target === "heading_color" && stylesXml) {
+    const updatedStyles = stylesXml.replace(
+      /<w:color w:val="[0-9A-Fa-f]{6}"\/>/g,
+      `<w:color w:val="${escapeXml(overrideHex)}"/>`,
+    );
+    entries.set("word/styles.xml", Buffer.from(updatedStyles, "utf8"));
   }
 
   const existingDocXml = entries.get("word/document.xml")?.toString("utf8") || "";
@@ -1634,28 +2210,42 @@ function buildDocxFromPlan(
     existingDocXml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0] ||
     `<w:sectPr><w:pgSz w:w="12240" w:h="15840" w:orient="portrait"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>`;
 
+  if (effective?.enforce) {
+    sectPrMatch = syncSectPrWithStructuralRules(sectPrMatch, effective.structural);
+  }
+
   if (options.override && options.override.target === "page_border" && overrideHex) {
     const pgBordersXml = `<w:pgBorders w:offsetFrom="page"><w:top w:val="single" w:sz="12" w:space="24" w:color="${escapeXml(overrideHex)}"/><w:left w:val="single" w:sz="12" w:space="24" w:color="${escapeXml(overrideHex)}"/><w:bottom w:val="single" w:sz="12" w:space="24" w:color="${escapeXml(overrideHex)}"/><w:right w:val="single" w:sz="12" w:space="24" w:color="${escapeXml(overrideHex)}"/></w:pgBorders>`;
     sectPrMatch = sectPrMatch.replace("</w:sectPr>", `${pgBordersXml}</w:sectPr>`);
   }
 
-  const isInstitutional = Boolean(templateRecord.spec.is_institutional_template);
-  const rules = templateRecord.spec.parsed_typography_rules;
   const fontFamily = (rules?.font_family as string) || templateRecord.spec.fonts?.body || "Times New Roman";
   const h1SizeHalfPt = Math.round(Number(rules?.heading1_size_pt || 14) * 2);
   const h2SizeHalfPt = Math.round(Number(rules?.heading2_size_pt || 12) * 2);
   const bodySizeHalfPt = Math.round(Number(rules?.body_size_pt || 12) * 2);
   const captionSizeHalfPt = Math.round(Number(rules?.caption_size_pt || 11) * 2);
   const lineTwips = Math.round(Number(rules?.line_spacing || 1.5) * 240);
-  const h1Jc = (rules?.heading1_align as string) === "center" || isInstitutional ? "center" : "left";
-  const bodyJc = (rules?.body_align as string) === "justify" || isInstitutional ? "both" : "left";
+  const h1Jc = toWordAlign(rules?.heading1_align ?? (isInstitutional ? "center" : "left"));
+  const bodyJc = toWordAlign(rules?.body_align ?? (isInstitutional ? "justify" : "left"));
+  const h1Case =
+    rules?.heading1_case ??
+    (rules?.heading1_uppercase === true || isInstitutional ? "uppercase" : "normal");
+
+  const fontXml = `<w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}" w:cs="${escapeXml(fontFamily)}"/>`;
 
   const renderedXmlParts: string[] = [];
   const isEditMode = options.mode === "edit_document";
 
   if (!isEditMode && !isInstitutional) {
+    const titleHalfPt = Math.max(h1SizeHalfPt + 4, 28);
+    const titleRPr = enforceRules
+      ? `<w:rPr>${fontXml}<w:b/><w:sz w:val="${titleHalfPt}"/><w:szCs w:val="${titleHalfPt}"/></w:rPr>`
+      : "";
+    const titlePPr = enforceRules
+      ? `<w:pPr><w:pStyle w:val="Title"/><w:jc w:val="${h1Jc}"/></w:pPr>`
+      : `<w:pPr><w:pStyle w:val="Title"/></w:pPr>`;
     renderedXmlParts.push(
-      `<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>${escapeXml(title)}</w:t></w:r></w:p>`,
+      `<w:p>${titlePPr}<w:r>${titleRPr}<w:t>${escapeXml(applyHeadingCase(title, h1Case))}</w:t></w:r></w:p>`,
     );
   }
 
@@ -1673,34 +2263,31 @@ function buildDocxFromPlan(
     if (isInstitutional && isH1) {
       const m = headingText.match(/^(\d+)\.\s*(.+)$/);
       if (m) {
-        headingText = `CHAPTER ${m[1]}: ${m[2]}`;
+        headingText = `Chapter ${m[1]}: ${m[2]}`;
       }
-      if (rules?.heading1_uppercase !== false) {
-        headingText = headingText.toUpperCase();
-      }
+      headingText = applyHeadingCase(headingText, h1Case);
+    } else if (isH1 && enforceRules) {
+      headingText = applyHeadingCase(headingText, h1Case);
     }
 
     const pageBreakBeforeXml =
       isInstitutional && isH1 && sIdx > 0 ? `<w:r><w:br w:type="page"/></w:r>` : "";
-    const headingJcXml = isH1 ? `<w:jc w:val="${h1Jc}"/>` : `<w:jc w:val="left"/>`;
+    const headingJcXml = isH1 ? `<w:jc w:val="${h1Jc}"/>` : `<w:jc w:val="${toWordAlign(rules?.heading2_align)}"/>`;
     const headingSz = isH1 ? h1SizeHalfPt : h2SizeHalfPt;
-    const headingRPr =
-      rules || isInstitutional
-        ? `<w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:b/><w:sz w:val="${headingSz}"/></w:rPr>`
-        : "";
+    const headingRPr = enforceRules
+      ? `<w:rPr>${fontXml}<w:b/><w:sz w:val="${headingSz}"/><w:szCs w:val="${headingSz}"/></w:rPr>`
+      : "";
 
     renderedXmlParts.push(
       `<w:p><w:pPr><w:pStyle w:val="${escapeXml(styleId)}"/>${headingJcXml}<w:spacing w:before="240" w:after="120"/></w:pPr>${pageBreakBeforeXml}<w:r>${headingRPr}<w:t>${escapeXml(headingText)}</w:t></w:r></w:p>`,
     );
 
-    const bodyPPr =
-      rules || isInstitutional
-        ? `<w:pPr><w:jc w:val="${bodyJc}"/><w:spacing w:line="${lineTwips}" w:lineRule="auto" w:after="120"/></w:pPr>`
-        : "";
-    const bodyRPr =
-      rules || isInstitutional
-        ? `<w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:sz w:val="${bodySizeHalfPt}"/></w:rPr>`
-        : "";
+    const bodyPPr = enforceRules
+      ? `<w:pPr><w:jc w:val="${bodyJc}"/><w:spacing w:line="${lineTwips}" w:lineRule="auto" w:after="120"/></w:pPr>`
+      : "";
+    const bodyRPr = enforceRules
+      ? `<w:rPr>${fontXml}<w:sz w:val="${bodySizeHalfPt}"/><w:szCs w:val="${bodySizeHalfPt}"/></w:rPr>`
+      : "";
 
     for (const para of sec.paragraphs) {
       renderedXmlParts.push(`<w:p>${bodyPPr}<w:r>${bodyRPr}<w:t>${escapeXml(para)}</w:t></w:r></w:p>`);
@@ -1714,10 +2301,9 @@ function buildDocxFromPlan(
     }
     if (sec.table_data) {
       if (sec.table_data.title) {
-        const capRPr =
-          rules || isInstitutional
-            ? `<w:rPr><w:rFonts w:ascii="${escapeXml(fontFamily)}" w:hAnsi="${escapeXml(fontFamily)}"/><w:b/><w:sz w:val="${captionSizeHalfPt}"/></w:rPr>`
-            : "";
+        const capRPr = enforceRules
+          ? `<w:rPr>${fontXml}<w:b/><w:sz w:val="${captionSizeHalfPt}"/><w:szCs w:val="${captionSizeHalfPt}"/></w:rPr>`
+          : "";
         renderedXmlParts.push(
           `<w:p><w:pPr><w:pStyle w:val="Heading3"/><w:jc w:val="center"/></w:pPr><w:r>${capRPr}<w:t>${escapeXml(sec.table_data.title)}</w:t></w:r></w:p>`,
         );
@@ -1725,13 +2311,13 @@ function buildDocxFromPlan(
       const headerCells = sec.table_data.headers
         .map(
           (h) =>
-            `<w:tc><w:p><w:r>${bodyRPr}<w:t>${escapeXml(h)}</w:t></w:r></w:p></w:tc>`,
+            `<w:tc><w:p>${bodyPPr}<w:r>${bodyRPr}<w:t>${escapeXml(h)}</w:t></w:r></w:p></w:tc>`,
         )
         .join("");
       const bodyRows = sec.table_data.rows
         .map(
           (row) =>
-            `<w:tr>${row.map((cell) => `<w:tc><w:p><w:r>${bodyRPr}<w:t>${escapeXml(cell)}</w:t></w:r></w:p></w:tc>`).join("")}</w:tr>`,
+            `<w:tr>${row.map((cell) => `<w:tc><w:p>${bodyPPr}<w:r>${bodyRPr}<w:t>${escapeXml(cell)}</w:t></w:r></w:p></w:tc>`).join("")}</w:tr>`,
         )
         .join("");
       renderedXmlParts.push(`<w:tbl>${tblPrXml}<w:tr>${headerCells}</w:tr>${bodyRows}</w:tbl>`);
@@ -1749,13 +2335,12 @@ function buildDocxFromPlan(
         return t && isInstructionOrRuleText(t) ? cleanInstructionParagraphXml(pXml) : pXml;
       });
     newBodyInner = `${withoutSectPr}\n${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
-  } else if (isInstitutional && existingDocXml.includes("<w:body>")) {
+  } else if (isInstitutional && options.templateMode !== "append" && existingDocXml.includes("<w:body>")) {
     const bodyContent = existingDocXml
       .replace(/^[\s\S]*?<w:body>/, "")
       .replace(/<\/w:body>[\s\S]*$/, "")
       .replace(/<w:sectPr[\s\S]*?<\/w:sectPr>(?=\s*$)/, "");
 
-    // Locate the exact XML character offset of the body anchor paragraph
     const paraMatches = Array.from(bodyContent.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g));
     const anchorIdx = templateRecord.spec.body_anchor_index;
     let cutOffset = -1;
@@ -1767,7 +2352,6 @@ function buildDocxFromPlan(
     ) {
       cutOffset = paraMatches[anchorIdx].index!;
     } else {
-      // Fallback: find the first CHAPTER 1 / 1. INTRODUCTION paragraph after front matter
       for (let i = 0; i < paraMatches.length; i++) {
         const t = stripXmlTags(paraMatches[i][0]).trim();
         if (!t || isInstructionOrRuleText(t) || t.includes("...")) continue;
@@ -1790,6 +2374,19 @@ function buildDocxFromPlan(
       ? cleanFrontMatterXml(frontMatterRaw, title, sections, meta, rules)
       : "";
     newBodyInner = `${cleanedFrontMatter}\n${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
+  } else if (
+    (options.templateMode === "fill" || options.templateMode === "append") &&
+    existingDocXml.includes("<w:body>")
+  ) {
+    const existingBodyCleaned = existingDocXml
+      .replace(/^[\s\S]*?<w:body>/, "")
+      .replace(/<\/w:body>[\s\S]*$/, "")
+      .replace(/<w:sectPr[\s\S]*?<\/w:sectPr>(?=\s*$)/, "")
+      .replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (pXml) => {
+        const t = stripXmlTags(pXml);
+        return t && isInstructionOrRuleText(t) ? cleanInstructionParagraphXml(pXml) : pXml;
+      });
+    newBodyInner = `${existingBodyCleaned}\n${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
   } else {
     newBodyInner = `${renderedXmlParts.join("\n")}\n${sectPrMatch}`;
   }
@@ -1873,6 +2470,8 @@ export interface StandaloneGenerateInput {
   enabled_rule_indices?: number[];
   include_images?: boolean;
   image_mode?: "off" | "search" | "placeholder";
+  rule_mode?: RuleMode;
+  custom_rules?: CustomRulePreferences;
 }
 
 export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
@@ -1905,8 +2504,11 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
   const docType = templateRecord.documentType;
   const topic = extractTopicKeywords(input.prompt);
   const metadata = extractDocumentMetadata(input.prompt, input);
+  const effectiveRules = resolveEffectiveDocxRules(templateRecord.spec, input);
   const activeRules =
-    input.enabled_rule_indices && templateRecord.spec.extracted_rules
+    effectiveRules.mode === "custom"
+      ? []
+      : input.enabled_rule_indices && templateRecord.spec.extracted_rules
       ? templateRecord.spec.extracted_rules.filter((_, idx) =>
           input.enabled_rule_indices!.includes(idx),
         )
@@ -1941,6 +2543,10 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
   let planSummary: Array<{ title: string; layout?: string }> = [];
   let planDetails: {
     title: string;
+    rule_mode?: RuleMode;
+    applied_rules?: string[];
+    effective_typography_rules?: Record<string, unknown>;
+    effective_structural_rules?: Record<string, unknown>;
     sections?: PlannedSectionItem[];
     slides?: PlannedSlideItem[];
   };
@@ -1985,22 +2591,35 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
       .filter(Boolean)
       .join(" • ");
 
-    const sections = synthesizeDocumentSections(
-      topic,
-      sectionCount,
-      effectiveInstructions || undefined,
+    const sections = synthesizeDocumentSections(topic, sectionCount, {
+      customInstructions: effectiveInstructions || undefined,
       researchSources,
-      activeRules,
-    );
+      selectedRules: activeRules,
+      requiredSections: effectiveRules.structural.required_sections,
+      documentOutline: templateRecord.spec.document_outline,
+      citationStyle: effectiveRules.structural.citation_style,
+      requireTables: effectiveRules.structural.require_tables,
+      ruleMode: effectiveRules.mode,
+      hasEmbeddedRules: templateRecord.spec.has_embedded_rules,
+    });
     outputBuffer = buildDocxFromPlan(templateRecord, topic, sections, {
       mode: input.mode,
+      templateMode: input.template_mode,
       editAction: input.edit_action,
       editTargetIndex: input.edit_target_index,
       override: input.overrides?.[0],
       metadata,
+      effectiveRules,
     });
     planSummary = sections.map((s) => ({ title: s.title, layout: s.heading_style }));
-    planDetails = { title: topic, sections };
+    planDetails = {
+      title: topic,
+      rule_mode: effectiveRules.mode,
+      applied_rules: effectiveRules.mode === "document" ? activeRules : [],
+      effective_typography_rules: effectiveRules.typography,
+      effective_structural_rules: effectiveRules.structural as Record<string, unknown>,
+      sections,
+    };
   }
 
   // Compute generated package hashes and build validation report
@@ -2011,16 +2630,47 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
   );
   const origStyleHash = templateRecord.spec.style_hash;
   const hasOverride = Boolean(input.overrides && input.overrides.length > 0);
-  const genStyleHash = hasOverride
-    ? computeCombinedStyleHash(genComponentHashes, "override")
-    : origStyleHash;
+  const hasRuleStyleSync = docType === "docx" && effectiveRules.enforce;
+  const origMargins = templateRecord.spec.page?.margins;
+  const targetMargins = effectiveRules.structural.margins_in;
+  const marginsChanged = Boolean(
+    targetMargins &&
+      origMargins &&
+      ((targetMargins.top !== undefined && Math.abs(targetMargins.top * 72 - origMargins.top_pt) > 1) ||
+        (targetMargins.right !== undefined && Math.abs(targetMargins.right * 72 - origMargins.right_pt) > 1) ||
+        (targetMargins.bottom !== undefined && Math.abs(targetMargins.bottom * 72 - origMargins.bottom_pt) > 1) ||
+        (targetMargins.left !== undefined && Math.abs(targetMargins.left * 72 - origMargins.left_pt) > 1)),
+  );
+  const origWidthPt = templateRecord.spec.page?.width_pt ?? 612;
+  const pageSizeChanged = Boolean(
+    effectiveRules.structural.page_size &&
+      ((effectiveRules.structural.page_size === "A4" && Math.abs(origWidthPt - 595) > 3) ||
+        (effectiveRules.structural.page_size === "Letter" && Math.abs(origWidthPt - 612) > 3) ||
+        (effectiveRules.structural.page_size === "Legal" && Math.abs((templateRecord.spec.page?.height_pt ?? 792) - 1008) > 3)),
+  );
+  const hasPageGeoSync =
+    docType === "docx" &&
+    effectiveRules.enforce &&
+    (marginsChanged || pageSizeChanged);
+  const genStyleHash =
+    hasOverride || hasRuleStyleSync
+      ? computeCombinedStyleHash(genComponentHashes, hasRuleStyleSync ? "rule-enforced" : "override")
+      : origStyleHash;
+
+  const fontLabel = String(effectiveRules.typography.font_family || templateRecord.spec.fonts?.default || "Aptos");
+  const h1PtLabel = Number(effectiveRules.typography.heading1_size_pt || 14);
+  const bodyPtLabel = Number(effectiveRules.typography.body_size_pt || 12);
+  const spacingLabel = Number(effectiveRules.typography.line_spacing || 1.5);
+  const marginLabel = effectiveRules.structural.margins_in?.top
+    ? `${effectiveRules.structural.margins_in.top}in`
+    : `${templateRecord.spec.page?.margins.top_pt ?? 72}pt`;
 
   const validation: GenerationResultData["validation"] = {
     passed: true,
     status: docType === "pdf" ? "not_applicable" : "passed",
     original_style_hash: origStyleHash,
     generated_style_hash: genStyleHash,
-    hash_match: !hasOverride,
+    hash_match: !hasOverride && !hasRuleStyleSync,
     font_drift_detected: false,
     border_drift_detected: false,
     margin_drift_detected: false,
@@ -2028,22 +2678,50 @@ export function executeStandaloneGeneration(input: StandaloneGenerateInput): {
     header_footer_preserved: true,
     table_formatting_preserved: true,
     components: [
+      ...(docType === "docx"
+        ? [
+            {
+              name: "Rule Enforcement",
+              status: effectiveRules.enforce
+                ? effectiveRules.mode === "custom"
+                  ? ("intentional_override" as const)
+                  : ("identical" as const)
+                : ("identical" as const),
+              detail:
+                effectiveRules.mode === "document"
+                  ? `Document rules enforced: ${fontLabel} · H1 ${h1PtLabel}pt · Body ${bodyPtLabel}pt · ${spacingLabel}x spacing`
+                  : effectiveRules.enforce
+                  ? `Custom preferences applied: ${fontLabel} · H1 ${h1PtLabel}pt · Body ${bodyPtLabel}pt · ${spacingLabel}x spacing`
+                  : "Template baseline preserved without custom overrides",
+            },
+          ]
+        : []),
       {
         name: "Typography & Styles",
-        status: hasOverride && input.overrides?.[0]?.target === "heading_color" ? "intentional_override" : "identical",
+        status:
+          (hasOverride && input.overrides?.[0]?.target === "heading_color") || hasRuleStyleSync
+            ? "intentional_override"
+            : "identical",
         detail:
           hasOverride && input.overrides?.[0]?.target === "heading_color"
             ? `Heading color override applied (${input.overrides[0].value})`
+            : hasRuleStyleSync
+            ? `Styles synchronized to ${fontLabel} (H1 ${h1PtLabel}pt, Body ${bodyPtLabel}pt)`
             : `Font hierarchy preserved (${templateRecord.spec.fonts?.default || "Aptos"})`,
       },
       {
         name: "Page & Margin Setup",
-        status: hasOverride && input.overrides?.[0]?.target === "page_border" ? "intentional_override" : "identical",
+        status:
+          (hasOverride && input.overrides?.[0]?.target === "page_border") || hasPageGeoSync
+            ? "intentional_override"
+            : "identical",
         detail:
           hasOverride && input.overrides?.[0]?.target === "page_border"
             ? `Page border override applied (${input.overrides[0].value})`
             : docType === "pptx"
             ? `Slide geometry preserved (${templateRecord.spec.slide_dimensions?.aspect_ratio || "16:9"})`
+            : hasPageGeoSync
+            ? `Rule geometry applied (${effectiveRules.structural.page_size || "Template"} · margins ${marginLabel})`
             : `Margins preserved (${templateRecord.spec.page?.margins.top_pt ?? 72}pt all sides)`,
       },
       {

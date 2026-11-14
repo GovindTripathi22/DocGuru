@@ -1,5 +1,5 @@
 import type { components } from "@/types/api.generated";
-import type { GenerationMode } from "@/types/template";
+import type { CustomRulePreferences, GenerationMode, RuleMode } from "@/types/template";
 
 export type GenerationDocumentType = components["schemas"]["GenerationRequest"]["document_type"];
 export type DetailLevel = NonNullable<components["schemas"]["GenerationRequest"]["detail_level"]>;
@@ -8,6 +8,8 @@ export interface GenerationPromptOptions {
   prompt: string;
   mode: GenerationMode;
   templateMode?: components["schemas"]["GenerationRequest"]["template_mode"];
+  ruleMode?: RuleMode;
+  customRules?: CustomRulePreferences;
   targetPages?: number;
   detailLevel?: DetailLevel;
   targetSlides?: number;
@@ -27,6 +29,8 @@ export interface GenerationPromptOptions {
 }
 
 export type GenerationRequestPayload = components["schemas"]["GenerationRequest"] & {
+  rule_mode?: RuleMode;
+  custom_rules?: CustomRulePreferences;
   author?: string | null;
   guide?: string | null;
   department?: string | null;
@@ -60,6 +64,16 @@ export function buildGenerationPayload(
     include_images: options.imageMode === "off" ? false : options.includeImages ?? true,
     image_mode: options.imageMode ?? "search",
   };
+
+  if (options.ruleMode) payload.rule_mode = options.ruleMode;
+  if (options.ruleMode === "custom" && options.customRules) {
+    const cleaned = Object.fromEntries(
+      Object.entries(options.customRules).filter(([, value]) => value !== undefined && value !== ""),
+    ) as CustomRulePreferences;
+    if (Object.keys(cleaned).length > 0) {
+      payload.custom_rules = cleaned;
+    }
+  }
 
   if (documentType === "pptx") {
     if (options.targetSlides !== undefined) payload.target_slides = options.targetSlides;

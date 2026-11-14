@@ -159,3 +159,132 @@ test("institutional seminar report template keeps front matter, removes formatti
   assert.match(outXml, /Times New Roman/);
   assert.match(outXml, /CHAPTER 1:/);
 });
+
+test("enforces embedded rules from non-institutional docx and strips all written rules across body, tables, and headers", () => {
+  const preset = getSampleTemplatePreset("executive-docx");
+  const entries = readZipEntries(preset.buffer);
+  const ruledDocXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Formatting Guideline: Use Arial font, 16 pt heading left aligned uppercase, 11 pt body text, double spacing (2.0), left margin 1.5 inches, A4 page size.</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Required Sections: Overview, Methodology, Conclusion</w:t></w:r></w:p>
+    <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Formatting Rule: Keep body text justified.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840" w:orient="portrait"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+  </w:body>
+</w:document>`;
+  entries.set("word/document.xml", Buffer.from(ruledDocXml, "utf8"));
+  entries.set(
+    "word/header1.xml",
+    Buffer.from(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Formatting Tip: Header instruction must be removed</w:t></w:r></w:p></w:hdr>`,
+      "utf8",
+    ),
+  );
+  const ruledBuf = buildZipArchive(entries);
+
+  const analyzed = analyzeTemplateBuffer("company-policy-rules.docx", ruledBuf);
+  assert.equal(analyzed.template_spec.has_embedded_rules, true);
+  assert.equal(analyzed.template_spec.parsed_typography_rules?.font_family, "Arial");
+  assert.equal(analyzed.template_spec.parsed_typography_rules?.heading1_size_pt, 16);
+  assert.equal(analyzed.template_spec.parsed_typography_rules?.body_size_pt, 11);
+  assert.equal(analyzed.template_spec.parsed_typography_rules?.line_spacing, 2);
+
+  const { result } = executeStandaloneGeneration({
+    template_id: analyzed.template_id,
+    prompt: "Zero Trust Network Rollout Plan",
+    rule_mode: "document",
+    template_mode: "fill",
+  });
+
+  const outRecord = getStandaloneOutput(result.output_filename);
+  assert.ok(outRecord);
+  const outEntries = readZipEntries(outRecord.buffer);
+  const outDocXml = outEntries.get("word/document.xml")?.toString("utf8") || "";
+  const outStylesXml = outEntries.get("word/styles.xml")?.toString("utf8") || "";
+  const outHeaderXml = outEntries.get("word/header1.xml")?.toString("utf8") || "";
+
+  assert.doesNotMatch(outDocXml, /Formatting Guideline:/);
+  assert.doesNotMatch(outDocXml, /Required Sections:/);
+  assert.doesNotMatch(outHeaderXml, /Header instruction must be removed/);
+  assert.match(outStylesXml, /w:ascii="Arial"/);
+  assert.match(outStylesXml, /w:sz w:val="32"/);
+  assert.match(outStylesXml, /w:sz w:val="22"/);
+  assert.match(outDocXml, /w:line="480"/);
+  assert.match(outDocXml, /w:left="2160"/);
+  assert.match(outDocXml, /w:w="11906"/);
+  assert.match(outDocXml, /OVERVIEW/);
+  assert.match(outDocXml, /METHODOLOGY/);
+  assert.ok(
+    result.validation.components?.some((c) => c.name === "Rule Enforcement"),
+  );
+});
+
+test("supports custom preferences mode when template has no embedded rules or user overrides document rules", () => {
+  const preset = getSampleTemplatePreset("executive-docx");
+  const rulelessEntries = readZipEntries(preset.buffer);
+  rulelessEntries.set(
+    "word/document.xml",
+    Buffer.from(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>1. Overview</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Plain content paragraph without any embedded formatting rules.</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840" w:orient="portrait"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+  </w:body>
+</w:document>`,
+      "utf8",
+    ),
+  );
+  const rulelessBuf = buildZipArchive(rulelessEntries);
+  const analyzed = analyzeTemplateBuffer("plain-template.docx", rulelessBuf);
+  assert.equal(analyzed.template_spec.has_embedded_rules, false);
+
+  const { result } = executeStandaloneGeneration({
+    template_id: analyzed.template_id,
+    prompt: "Data Platform Modernization Strategy",
+    rule_mode: "custom",
+    custom_rules: {
+      font_name: "Georgia",
+      heading1_size_pt: 18,
+      body_size_pt: 11,
+      line_spacing: 1.5,
+      body_alignment: "justify",
+      heading1_alignment: "center",
+      heading1_case: "uppercase",
+      margin_inches: 0.75,
+      page_size: "A4",
+    },
+  });
+
+  const outRecord = getStandaloneOutput(result.output_filename);
+  assert.ok(outRecord);
+  const outEntries = readZipEntries(outRecord.buffer);
+  const outDocXml = outEntries.get("word/document.xml")?.toString("utf8") || "";
+  const outStylesXml = outEntries.get("word/styles.xml")?.toString("utf8") || "";
+
+  assert.match(outStylesXml, /w:ascii="Georgia"/);
+  assert.match(outStylesXml, /w:sz w:val="36"/);
+  assert.match(outStylesXml, /w:sz w:val="22"/);
+  assert.match(outDocXml, /w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/);
+  assert.match(outDocXml, /w:w="11906"/);
+  const ruleComp = result.validation.components?.find((c) => c.name === "Rule Enforcement");
+  assert.equal(ruleComp?.status, "intentional_override");
+  assert.match(ruleComp?.detail || "", /Georgia/);
+
+  // Also verify switching a rule-bearing template to rule_mode="custom" overrides its embedded rules
+  const ruledAnalyzed = analyzeTemplateBuffer(preset.filename, preset.buffer);
+  assert.equal(ruledAnalyzed.template_spec.has_embedded_rules, true);
+  const overrideRes = executeStandaloneGeneration({
+    template_id: ruledAnalyzed.template_id,
+    prompt: "Override Document Rules With Custom",
+    rule_mode: "custom",
+    custom_rules: { font_name: "Verdana", body_size_pt: 10 },
+  });
+  const overrideOut = getStandaloneOutput(overrideRes.result.output_filename);
+  assert.ok(overrideOut);
+  const overrideStyles = readZipEntries(overrideOut.buffer).get("word/styles.xml")?.toString("utf8") || "";
+  assert.match(overrideStyles, /w:ascii="Verdana"/);
+  assert.match(overrideStyles, /w:sz w:val="20"/);
+});
+

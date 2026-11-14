@@ -85,6 +85,19 @@ class ThemeOverrideRequest(BaseModel):
         )
 
 
+class CustomRulePreferences(BaseModel):
+    font_name: str | None = Field(default=None, max_length=64)
+    heading1_size_pt: float | None = Field(default=None, ge=8.0, le=48.0)
+    heading2_size_pt: float | None = Field(default=None, ge=8.0, le=36.0)
+    body_size_pt: float | None = Field(default=None, ge=8.0, le=28.0)
+    line_spacing: float | None = Field(default=None, ge=1.0, le=3.0)
+    body_alignment: Literal["left", "center", "right", "justify"] | None = None
+    heading1_alignment: Literal["left", "center", "right", "justify"] | None = None
+    heading1_case: Literal["uppercase", "titlecase", "normal"] | None = None
+    margin_inches: float | None = Field(default=None, ge=0.25, le=2.5)
+    page_size: Literal["A4", "Letter", "Legal"] | None = None
+
+
 class DocumentPlan(BaseModel):
     title: str
     target_audience: str | None = "Professional / Academic"
@@ -98,6 +111,9 @@ class DocumentPlan(BaseModel):
     abstract: str | None = None
     applied_styles: list[str] = Field(default_factory=list)
     applied_rules: list[str] = Field(default_factory=list)
+    rule_mode: Literal["document", "custom"] = "document"
+    effective_typography_rules: dict[str, Any] = Field(default_factory=dict)
+    effective_structural_rules: dict[str, Any] = Field(default_factory=dict)
     edit_mode: str | None = "create"
     theme_overrides: list[ThemeOverride] = Field(default_factory=list)
     research_sources: list[ResearchSource] = Field(default_factory=list)
@@ -147,6 +163,8 @@ class GenerationRequest(BaseModel):
     image_mode: Literal["off", "search", "placeholder", "auto", "generate"] = "search"
     template_mode: Literal["auto", "fill", "append", "replace_body"] = "auto"
     body_anchor_index: int | None = None
+    rule_mode: Literal["document", "custom"] = "document"
+    custom_rules: CustomRulePreferences | None = None
     author: str | None = Field(default=None, max_length=200)
     guide: str | None = Field(default=None, max_length=200)
     department: str | None = Field(default=None, max_length=200)

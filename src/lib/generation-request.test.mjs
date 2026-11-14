@@ -100,3 +100,40 @@ test("forwards optional seminar metadata fields when provided", () => {
   assert.equal(payload.institution, "PICT Pune");
   assert.equal(payload.academic_year, "2025-2026");
 });
+
+test("forwards rule_mode and custom_rules only when ruleMode is custom", () => {
+  const docMode = buildGenerationPayload("template-id", "docx", {
+    prompt: "Write technical documentation",
+    mode: "create_document",
+    detailLevel: "medium",
+    ruleMode: "document",
+    customRules: { font_name: "Arial", body_size_pt: 11 },
+  });
+  assert.equal(docMode.rule_mode, "document");
+  assert.equal("custom_rules" in docMode, false);
+
+  const customMode = buildGenerationPayload("template-id", "docx", {
+    prompt: "Write technical documentation",
+    mode: "create_document",
+    detailLevel: "medium",
+    ruleMode: "custom",
+    customRules: {
+      font_name: "Calibri",
+      heading1_size_pt: 18,
+      body_size_pt: 11,
+      line_spacing: 1.5,
+      margin_inches: 0.75,
+      page_size: "A4",
+    },
+  });
+  assert.equal(customMode.rule_mode, "custom");
+  assert.deepEqual(customMode.custom_rules, {
+    font_name: "Calibri",
+    heading1_size_pt: 18,
+    body_size_pt: 11,
+    line_spacing: 1.5,
+    margin_inches: 0.75,
+    page_size: "A4",
+  });
+});
+

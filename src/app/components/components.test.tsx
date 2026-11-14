@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PromptData, TemplateSpec } from "@/types/template";
@@ -170,6 +170,53 @@ describe("PromptInput", () => {
       customInstructions: "Engineering managers",
       includeImages: false,
     });
+  });
+
+  it("supports switching between Document Rules (ON) and Custom Preferences (OFF)", async () => {
+    const user = userEvent.setup();
+    const onGenerate = renderPromptInput(vi.fn(), {
+      hasEmbeddedRules: false,
+    });
+
+    // Defaults to custom when template has no embedded rules
+    expect(screen.getByRole("button", { name: /Custom Preferences \(OFF\)/i })).toHaveAttribute("aria-pressed", "true");
+    await user.selectOptions(screen.getByLabelText(/Font family/i), "Calibri");
+    await user.selectOptions(screen.getByLabelText(/Line spacing/i), "2");
+    await user.selectOptions(screen.getByLabelText(/Page size/i), "A4");
+
+    await user.type(screen.getByRole("textbox", { name: "Document prompt" }), "System reliability handbook");
+    await user.click(screen.getByRole("button", { name: /Generate using this template/i }));
+
+    expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      ruleMode: "custom",
+      customRules: expect.objectContaining({
+        font_name: "Calibri",
+        line_spacing: 2,
+        page_size: "A4",
+      }),
+    }));
+
+    // Toggle back to Document Rules mode when embedded rules are present
+    cleanup();
+    const onDocGenerate = vi.fn();
+    renderPromptInput(onDocGenerate, {
+      hasEmbeddedRules: true,
+      detectedRuleCategories: ["typography", "margins"],
+      parsedTypographyRules: {
+        font_family: "Times New Roman",
+        heading1: { size_pt: 14, alignment: "center" },
+        body: { size_pt: 12, line_spacing: 1.5 },
+      },
+    });
+
+    expect(screen.getByRole("button", { name: /Document Rules \(ON\)/i })).toHaveAttribute("aria-pressed", "true");
+    await user.type(screen.getByRole("textbox", { name: "Document prompt" }), "Edge AI report");
+    await user.click(screen.getByRole("button", { name: /Generate using this template/i }));
+
+    expect(onDocGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      ruleMode: "document",
+    }));
+    expect(onDocGenerate.mock.calls[0][0]).not.toHaveProperty("customRules");
   });
 });
 

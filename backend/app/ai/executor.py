@@ -32,6 +32,9 @@ class DocumentExecutor:
         target_heading: str | None = None,
         target_index: int | None = None,
         warnings: list[str] | None = None,
+        rule_mode: str = "document",
+        custom_rules: Any | None = None,
+        enabled_rule_indices: list[int] | None = None,
     ) -> str:
         """
         Executes a DocumentPlan against a locked DOCX template.
@@ -48,6 +51,9 @@ class DocumentExecutor:
             target_heading=target_heading,
             target_index=target_index,
             warnings=warnings,
+            rule_mode=rule_mode,
+            custom_rules=custom_rules,
+            enabled_rule_indices=enabled_rule_indices,
         )
         return output_file
 

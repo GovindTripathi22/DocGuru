@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Sparkles, ArrowRight, Wand2, Sliders, X, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
-import { GenerationMode, PromptData } from "@/types/template";
+import { Sparkles, ArrowRight, Wand2, Sliders, X, CheckCircle, ChevronDown, ChevronUp, ShieldCheck, Settings2 } from "lucide-react";
+import { CustomRulePreferences, GenerationMode, PromptData, RuleMode } from "@/types/template";
 
 interface PromptInputProps {
   documentType: "docx" | "pptx" | "pdf";
@@ -14,6 +14,10 @@ interface PromptInputProps {
   isGenerating: boolean;
   extractedRules?: string[];
   documentOutline?: string[];
+  hasEmbeddedRules?: boolean;
+  detectedRuleCategories?: string[];
+  parsedTypographyRules?: Record<string, unknown>;
+  parsedStructuralRules?: Record<string, unknown>;
   initialPrompt?: string;
 }
 
@@ -27,6 +31,10 @@ export function PromptInput({
   isGenerating,
   extractedRules,
   documentOutline,
+  hasEmbeddedRules,
+  detectedRuleCategories,
+  parsedTypographyRules,
+  parsedStructuralRules,
   initialPrompt = "",
 }: PromptInputProps) {
   const [prompt, setPrompt] = useState(initialPrompt);
@@ -56,6 +64,104 @@ export function PromptInput({
     "none" | "table_border" | "page_border" | "heading_color"
   >("none");
   const [overrideColor, setOverrideColor] = useState("#0284c7");
+
+  const typoH1 = (parsedTypographyRules?.heading1 || {}) as Record<string, unknown>;
+  const typoBody = (parsedTypographyRules?.body || {}) as Record<string, unknown>;
+  const structMargins = (parsedStructuralRules?.margins_in || {}) as Record<string, unknown>;
+
+  const detectedFont =
+    (typeof parsedTypographyRules?.font_family === "string" && parsedTypographyRules.font_family) ||
+    (typeof typoH1.font_name === "string" && typoH1.font_name) ||
+    (typeof typoBody.font_name === "string" && typoBody.font_name) ||
+    undefined;
+  const detectedH1Size =
+    typeof typoH1.size_pt === "number"
+      ? typoH1.size_pt
+      : typeof parsedTypographyRules?.heading1_size_pt === "number"
+      ? parsedTypographyRules.heading1_size_pt
+      : undefined;
+  const detectedBodySize =
+    typeof typoBody.size_pt === "number"
+      ? typoBody.size_pt
+      : typeof parsedTypographyRules?.body_size_pt === "number"
+      ? parsedTypographyRules.body_size_pt
+      : undefined;
+  const detectedLineSpacing =
+    typeof typoBody.line_spacing === "number"
+      ? typoBody.line_spacing
+      : typeof parsedTypographyRules?.line_spacing === "number"
+      ? parsedTypographyRules.line_spacing
+      : undefined;
+  const detectedBodyAlign =
+    typeof typoBody.alignment === "string"
+      ? typoBody.alignment
+      : typeof parsedTypographyRules?.body_align === "string"
+      ? parsedTypographyRules.body_align
+      : undefined;
+  const detectedH1Align =
+    typeof typoH1.alignment === "string"
+      ? typoH1.alignment
+      : typeof parsedTypographyRules?.heading1_align === "string"
+      ? parsedTypographyRules.heading1_align
+      : undefined;
+  const detectedH1Case =
+    typeof typoH1.case === "string"
+      ? typoH1.case
+      : typeof parsedTypographyRules?.heading1_case === "string"
+      ? parsedTypographyRules.heading1_case
+      : undefined;
+
+  const [ruleMode, setRuleMode] = useState<RuleMode>(
+    hasEmbeddedRules === false ? "custom" : "document",
+  );
+  const [customFontName, setCustomFontName] = useState<string>(detectedFont || "Times New Roman");
+  const [customH1Size, setCustomH1Size] = useState<string>(
+    detectedH1Size !== undefined ? String(detectedH1Size) : "16",
+  );
+  const [customBodySize, setCustomBodySize] = useState<string>(
+    detectedBodySize !== undefined ? String(detectedBodySize) : "12",
+  );
+  const [customLineSpacing, setCustomLineSpacing] = useState<string>(
+    detectedLineSpacing !== undefined ? String(detectedLineSpacing) : "1.5",
+  );
+  const [customBodyAlignment, setCustomBodyAlignment] = useState<
+    "justify" | "left" | "center" | "right"
+  >(
+    detectedBodyAlign === "left" ||
+      detectedBodyAlign === "center" ||
+      detectedBodyAlign === "right" ||
+      detectedBodyAlign === "justify"
+      ? detectedBodyAlign
+      : "justify",
+  );
+  const [customH1Alignment, setCustomH1Alignment] = useState<
+    "left" | "center" | "right" | "justify"
+  >(
+    detectedH1Align === "left" ||
+      detectedH1Align === "center" ||
+      detectedH1Align === "right" ||
+      detectedH1Align === "justify"
+      ? detectedH1Align
+      : "left",
+  );
+  const [customH1Case, setCustomH1Case] = useState<"uppercase" | "titlecase" | "normal">(
+    detectedH1Case === "uppercase" ||
+      detectedH1Case === "titlecase" ||
+      detectedH1Case === "normal"
+      ? detectedH1Case
+      : "uppercase",
+  );
+  const [customMarginInches, setCustomMarginInches] = useState<string>(
+    typeof structMargins.top === "number" ? String(structMargins.top) : "1",
+  );
+  const [customPageSize, setCustomPageSize] = useState<"" | "A4" | "Letter" | "Legal">(
+    parsedStructuralRules?.page_size === "A4" ||
+      parsedStructuralRules?.page_size === "Letter" ||
+      parsedStructuralRules?.page_size === "Legal"
+      ? parsedStructuralRules.page_size
+      : "",
+  );
+
   const [enabledRuleIndexes, setEnabledRuleIndexes] = useState<number[]>(() =>
     (extractedRules || []).slice(0, 12).map((_, index) => index),
   );
@@ -148,10 +254,28 @@ export function PromptInput({
         ? undefined
         : Number.parseInt(editTargetIndex, 10);
 
+    const customRulesPayload: CustomRulePreferences | undefined =
+      documentType !== "pptx" && ruleMode === "custom"
+        ? {
+            font_name: customFontName,
+            heading1_size_pt: Number(customH1Size) || 16,
+            heading2_size_pt: Math.max(10, (Number(customH1Size) || 16) - 2),
+            body_size_pt: Number(customBodySize) || 12,
+            line_spacing: Number(customLineSpacing) || 1.5,
+            body_alignment: customBodyAlignment,
+            heading1_alignment: customH1Alignment,
+            heading1_case: customH1Case,
+            margin_inches: Number(customMarginInches) || 1,
+            ...(customPageSize ? { page_size: customPageSize } : {}),
+          }
+        : undefined;
+
     onGenerate({
       prompt: prompt.trim(),
       mode,
       ...(documentType === "docx" && !mode.startsWith("edit") ? { templateMode } : {}),
+      ...(documentType !== "pptx" ? { ruleMode } : {}),
+      ...(customRulesPayload ? { customRules: customRulesPayload } : {}),
       ...(mode === "edit_document"
         ? {
             editAction,
@@ -515,49 +639,294 @@ export function PromptInput({
         </div>
       </div>
 
-      {/* Detected Template Rules (Shown neatly when template contains extracted rules) */}
-      {visibleRules.length > 0 && (
-        <fieldset className="rounded-xl border border-sky-200 bg-sky-50/60 p-3.5 text-xs shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+      {/* Rule Enforcement Mode (Document Rules ON vs Custom Preferences OFF) */}
+      {documentType !== "pptx" && (
+        <div className="rounded-xl border border-sky-200/90 bg-sky-50/50 p-4 space-y-3 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <legend className="font-bold text-sky-900">Detected template rules</legend>
-              <p className="text-[11px] text-slate-500 font-medium">Rules extracted from your template to guide AI structure</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-sky-700" />
+                <span className="text-xs font-bold text-slate-900">
+                  Rule Enforcement Mode
+                </span>
+                {hasEmbeddedRules ? (
+                  <span className="rounded-full bg-emerald-50 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                    Document Rules Found
+                  </span>
+                ) : hasEmbeddedRules === false ? (
+                  <span className="rounded-full bg-amber-50 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                    No Embedded Rules
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                {ruleMode === "document"
+                  ? "Reads all formatting, typography, alignment, and structural rules inside the document, applies them strictly, and removes instruction text."
+                  : "Apply your own font, heading sizes, spacing, alignment, margins, and page size preferences."}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                setEnabledRuleIndexes(
-                  allRulesSelected ? [] : visibleRules.map((_, index) => index),
-                )
-              }
-              className="text-[11px] font-bold text-sky-600 hover:text-sky-800 underline underline-offset-2"
+
+            <div
+              role="group"
+              aria-label="Rule enforcement mode"
+              className="flex rounded-lg bg-white border border-sky-200 p-1 shadow-sm"
             >
-              {allRulesSelected ? "Deselect all" : "Select all"} ({enabledRuleIndexes.length}/{visibleRules.length})
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {visibleRules.map((rule, index) => (
-              <label
-                key={`${index}-${rule}`}
-                className="flex items-start gap-2 rounded-lg border border-sky-200/80 bg-white/90 p-2 text-slate-800 cursor-pointer hover:border-sky-400 hover:bg-sky-50/80 transition-colors shadow-sm"
+              <button
+                type="button"
+                aria-pressed={ruleMode === "document"}
+                onClick={() => setRuleMode("document")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  ruleMode === "document"
+                    ? "bg-sky-600 text-white font-bold shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
               >
-                <input
-                  type="checkbox"
-                  checked={enabledRuleIndexes.includes(index)}
-                  onChange={(event) =>
-                    setEnabledRuleIndexes((current) =>
-                      event.target.checked
-                        ? [...current, index].sort((left, right) => left - right)
-                        : current.filter((item) => item !== index),
-                    )
-                  }
-                  className="mt-0.5 accent-sky-600"
-                />
-                <span className="leading-snug text-xs font-medium">{rule}</span>
-              </label>
-            ))}
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Document Rules (ON)
+              </button>
+              <button
+                type="button"
+                aria-pressed={ruleMode === "custom"}
+                onClick={() => setRuleMode("custom")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  ruleMode === "custom"
+                    ? "bg-sky-600 text-white font-bold shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Custom Preferences (OFF)
+              </button>
+            </div>
           </div>
-        </fieldset>
+
+          {ruleMode === "document" ? (
+            <div className="space-y-3">
+              {hasEmbeddedRules === false && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    No written formatting rules were detected inside this document. Switch to Custom Preferences to define font, spacing, and margin rules.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRuleMode("custom")}
+                    className="rounded-md bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 whitespace-nowrap"
+                  >
+                    Switch to Custom Preferences
+                  </button>
+                </div>
+              )}
+              {(detectedRuleCategories && detectedRuleCategories.length > 0) || detectedFont ? (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  {detectedFont && (
+                    <span className="rounded-md border border-sky-200 bg-white px-2 py-0.5 font-semibold text-slate-800">
+                      Font: {detectedFont}
+                    </span>
+                  )}
+                  {detectedH1Size !== undefined && (
+                    <span className="rounded-md border border-sky-200 bg-white px-2 py-0.5 font-semibold text-slate-800">
+                      H1: {detectedH1Size}pt
+                      {detectedH1Align ? ` ${detectedH1Align}` : ""}
+                    </span>
+                  )}
+                  {detectedBodySize !== undefined && (
+                    <span className="rounded-md border border-sky-200 bg-white px-2 py-0.5 font-semibold text-slate-800">
+                      Body: {detectedBodySize}pt
+                      {detectedLineSpacing !== undefined ? ` · ${detectedLineSpacing}x` : ""}
+                    </span>
+                  )}
+                  {(detectedRuleCategories || []).map((cat) => (
+                    <span
+                      key={cat}
+                      className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800 capitalize"
+                    >
+                      {cat.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {visibleRules.length > 0 && (
+                <fieldset className="rounded-xl border border-sky-200 bg-white/80 p-3 text-xs shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <div>
+                      <legend className="font-bold text-sky-900">Detected template rules</legend>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Rules extracted from your template; instruction text is removed from the generated file
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEnabledRuleIndexes(
+                          allRulesSelected ? [] : visibleRules.map((_, index) => index),
+                        )
+                      }
+                      className="text-[11px] font-bold text-sky-600 hover:text-sky-800 underline underline-offset-2"
+                    >
+                      {allRulesSelected ? "Deselect all" : "Select all"} ({enabledRuleIndexes.length}/{visibleRules.length})
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {visibleRules.map((rule, index) => (
+                      <label
+                        key={`${index}-${rule}`}
+                        className="flex items-start gap-2 rounded-lg border border-sky-200/80 bg-white/90 p-2 text-slate-800 cursor-pointer hover:border-sky-400 hover:bg-sky-50/80 transition-colors shadow-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={enabledRuleIndexes.includes(index)}
+                          onChange={(event) =>
+                            setEnabledRuleIndexes((current) =>
+                              event.target.checked
+                                ? [...current, index].sort((left, right) => left - right)
+                                : current.filter((item) => item !== index),
+                            )
+                          }
+                          className="mt-0.5 accent-sky-600"
+                        />
+                        <span className="leading-snug text-xs font-medium">{rule}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 border-t border-sky-200/70 pt-3 text-xs">
+              <label className="grid gap-1 font-bold text-slate-800">
+                Font family
+                <select
+                  value={customFontName}
+                  onChange={(e) => setCustomFontName(e.target.value)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Arial">Arial</option>
+                  <option value="Calibri">Calibri</option>
+                  <option value="Aptos">Aptos</option>
+                  <option value="Cambria">Cambria</option>
+                  <option value="Georgia">Georgia</option>
+                  <option value="Verdana">Verdana</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Heading 1 size (pt)
+                <input
+                  type="number"
+                  min={10}
+                  max={36}
+                  step={0.5}
+                  value={customH1Size}
+                  onChange={(e) => setCustomH1Size(e.target.value)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 tabular-nums"
+                />
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Body size (pt)
+                <input
+                  type="number"
+                  min={8}
+                  max={24}
+                  step={0.5}
+                  value={customBodySize}
+                  onChange={(e) => setCustomBodySize(e.target.value)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 tabular-nums"
+                />
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Line spacing
+                <select
+                  value={customLineSpacing}
+                  onChange={(e) => setCustomLineSpacing(e.target.value)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="1">1.0 (Single)</option>
+                  <option value="1.15">1.15</option>
+                  <option value="1.5">1.5</option>
+                  <option value="2">2.0 (Double)</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Body alignment
+                <select
+                  value={customBodyAlignment}
+                  onChange={(e) =>
+                    setCustomBodyAlignment(e.target.value as typeof customBodyAlignment)
+                  }
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="justify">Justify</option>
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Heading 1 alignment
+                <select
+                  value={customH1Alignment}
+                  onChange={(e) =>
+                    setCustomH1Alignment(e.target.value as typeof customH1Alignment)
+                  }
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                  <option value="justify">Justify</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Heading 1 casing
+                <select
+                  value={customH1Case}
+                  onChange={(e) => setCustomH1Case(e.target.value as typeof customH1Case)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="uppercase">UPPERCASE</option>
+                  <option value="titlecase">Title Case</option>
+                  <option value="normal">As Written</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Page margins (inches)
+                <select
+                  value={customMarginInches}
+                  onChange={(e) => setCustomMarginInches(e.target.value)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="0.5">0.5&quot; (Narrow)</option>
+                  <option value="0.75">0.75&quot;</option>
+                  <option value="1">1.0&quot; (Standard)</option>
+                  <option value="1.25">1.25&quot;</option>
+                  <option value="1.5">1.5&quot; (Wide Left/All)</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1 font-bold text-slate-800">
+                Page size
+                <select
+                  value={customPageSize}
+                  onChange={(e) => setCustomPageSize(e.target.value as typeof customPageSize)}
+                  className="rounded-lg border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                >
+                  <option value="">Keep template size</option>
+                  <option value="A4">A4</option>
+                  <option value="Letter">US Letter</option>
+                  <option value="Legal">Legal</option>
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Optional Report & Front-Matter Metadata (Cover Page / Certificate / Acknowledgement) */}

@@ -222,3 +222,85 @@ def test_docx_engine_inhabits_seminar_template_without_second_doc(seminar_templa
     report = validator.validate(spec, result_path, original_file_path=str(seminar_template_path))
     assert report.passed is True, f"DiffValidator failed with issues: {report.issues}"
     assert report.status == "passed"
+
+
+def test_non_institutional_rule_mode_enforces_embedded_rules_and_strips_instructions(tmp_path):
+    """Test that document rule mode extracts rules from a plain docx, enforces them on styles/page, and removes instructions."""
+    doc = docx.Document()
+    doc.add_paragraph(
+        "Formatting Guideline: Font Style Arial, Heading 16 pt uppercase left aligned, body 11 pt double spacing (2.0), left margin 1.5 inches, A4 page size."
+    )
+    doc.add_paragraph("Required Sections: Executive Overview, Technical Architecture, Conclusion")
+    doc.add_paragraph("Regular placeholder body text.")
+    tpl_path = tmp_path / "rules_only_template.docx"
+    doc.save(str(tpl_path))
+
+    analyzer = TemplateAnalyzer()
+    spec = analyzer.analyze(str(tpl_path))
+    assert spec.has_embedded_rules is True
+    assert spec.parsed_typography_rules.get("heading1", {}).get("size_pt") == 16.0
+    assert spec.parsed_structural_rules.get("page_size") == "A4"
+
+    locked_doc = LockedTemplate(docx.Document(str(tpl_path)), str(tpl_path), spec)
+    plan = DocumentPlan(
+        title="Platform Security Architecture",
+        sections=[
+            DocumentSection(title="Executive Overview", paragraphs=["Security baseline overview."]),
+            DocumentSection(title="Technical Architecture", paragraphs=["Zero-trust control plane."]),
+        ],
+        conclusion="All controls verified.",
+    )
+    out_path = tmp_path / "ruled_output.docx"
+    DocxEngine().generate_from_plan(locked_doc=locked_doc, plan=plan, output_path=str(out_path), rule_mode="document")
+
+    gen = docx.Document(str(out_path))
+    full_text = "\n".join(p.text for p in gen.paragraphs)
+    assert "Formatting Guideline:" not in full_text
+    assert "Required Sections:" not in full_text
+    assert "EXECUTIVE OVERVIEW" in full_text
+    assert round(gen.sections[0].left_margin.inches, 2) == 1.5
+
+
+def test_custom_rule_mode_overrides_template_without_rules(tmp_path):
+    """Test that rule_mode='custom' applies CustomRulePreferences when a template has no embedded rules."""
+    from backend.app.models.generation import CustomRulePreferences
+
+    doc = docx.Document()
+    doc.add_paragraph("Sample Heading", style="Heading 1")
+    doc.add_paragraph("Sample body content with no written formatting instructions.")
+    tpl_path = tmp_path / "plain_no_rules.docx"
+    doc.save(str(tpl_path))
+
+    spec = TemplateAnalyzer().analyze(str(tpl_path))
+    assert spec.has_embedded_rules is False
+
+    locked_doc = LockedTemplate(docx.Document(str(tpl_path)), str(tpl_path), spec)
+    plan = DocumentPlan(
+        title="Cloud Cost Governance",
+        sections=[DocumentSection(title="Cost Allocation", paragraphs=["Tagging and budget guardrails."])],
+    )
+    prefs = CustomRulePreferences(
+        font_name="Calibri",
+        heading1_size_pt=18.0,
+        body_size_pt=11.0,
+        line_spacing=1.5,
+        body_alignment="justify",
+        heading1_alignment="center",
+        heading1_case="uppercase",
+        margin_inches=0.75,
+        page_size="A4",
+    )
+    out_path = tmp_path / "custom_output.docx"
+    DocxEngine().generate_from_plan(
+        locked_doc=locked_doc,
+        plan=plan,
+        output_path=str(out_path),
+        rule_mode="custom",
+        custom_rules=prefs,
+    )
+
+    gen = docx.Document(str(out_path))
+    assert "COST ALLOCATION" in "\n".join(p.text for p in gen.paragraphs)
+    assert round(gen.sections[0].top_margin.inches, 2) == 0.75
+    assert gen.styles["Normal"].font.name == "Calibri"
+

@@ -36,29 +36,46 @@ def _xpath_elements(root: etree._Element, expression: str) -> list[etree._Elemen
 
 INSTRUCTION_PATTERNS = [
     re.compile(
-        r"^\s*(?:formatting\s+)?(?:rule|note|guideline|requirement|instruction|tip|format|font|margin|spacing|style|case|alignment|size)s?(?:\s+\w+){0,3}\s*[:\-–]",
+        r"^\s*(?:formatting\s+)?(?:rule|note|guideline|requirement|instruction|tip|format|font|margin|margins|spacing|style|case|alignment|size|paper\s*size|page\s*size|citation|abstract)s?(?:\s+\w+){0,3}\s*[:\-–]",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:font\s+style|font\s+size|line\s+spacing|spacing\s+before|spacing\s+after|formatting\s+tips?|sub\s*heading\s*\d*\s*formatting)\b",
+        r"\b(?:font\s+style|font\s+family|font\s+name|font\s+size|line\s+spacing|spacing\s+before|spacing\s+after|formatting\s+tips?|sub\s*heading\s*\d*\s*formatting|page\s+margins?)\b",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:for\s+giving\s+long\s+space|do\s+not\s+use\s+space\s+bar|chapter\s*1\s*will\s*start|pages?\s+till\s+index|all\s+content\s+font\s+size|heading\s+should\s+be|numbered\s+in\s+roman)\b",
+        r"\b(?:for\s+giving\s+long\s+space|do\s+not\s+use\s+space\s+bar|chapter\s*1\s*will\s*start|pages?\s+till\s+index|all\s+content\s+font\s+size|heading\s+should\s+be|numbered\s+in\s+roman|required\s+sections?)\b",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:size\s*:\s*-?\s*\d+|style\s*:\s*times\s+new\s+roman|case\s*:\s*(?:upper|lower|title|sentence)|re\s*&\s*after)\b",
+        r"\b(?:size\s*:\s*-?\s*\d+|style\s*:\s*(?:times\s+new\s+roman|arial|calibri|aptos|cambria|georgia)|case\s*:\s*(?:upper|lower|title|sentence)|re\s*&\s*after)\b",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:must|shall|should)\b.*\b(?:times\s+new\s+roman|arial|calibri|aptos|font|margin|spacing|size|heading|justified|centered|uppercase|roman\s+numeral|ieee)\b",
+        r"\b(?:must|shall|should)\b.*\b(?:times\s+new\s+roman|arial|calibri|aptos|cambria|georgia|verdana|font|margin|margins|spacing|size|heading|justified|centered|left\s+aligned|uppercase|roman\s+numeral|ieee|apa|a4|letter)\b",
         re.IGNORECASE,
     ),
     re.compile(
-        r"^\s*[\(\[]\s*(?:font|size|bold|italic|times\s+new\s+roman|write\s+approx|enter\s+|insert\s+|approx\.?\s*\d+\s*words).*[\)\]]\s*$",
+        r"^\s*[\(\[]\s*(?:font|size|bold|italic|times\s+new\s+roman|arial|calibri|write\s+approx|enter\s+|insert\s+|approx\.?\s*\d+\s*words).*[\)\]]\s*$",
         re.IGNORECASE,
     ),
+]
+
+KNOWN_FONT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\btimes\s+new\s+roman\b", re.I), "Times New Roman"),
+    (re.compile(r"\baptos\s+display\b", re.I), "Aptos Display"),
+    (re.compile(r"\baptos\b", re.I), "Aptos"),
+    (re.compile(r"\barial\b", re.I), "Arial"),
+    (re.compile(r"\bcalibri\b", re.I), "Calibri"),
+    (re.compile(r"\bcambria\b", re.I), "Cambria"),
+    (re.compile(r"\bgeorgia\b", re.I), "Georgia"),
+    (re.compile(r"\bverdana\b", re.I), "Verdana"),
+    (re.compile(r"\btahoma\b", re.I), "Tahoma"),
+    (re.compile(r"\bgaramond\b", re.I), "Garamond"),
+    (re.compile(r"\btrebuchet\s+ms\b", re.I), "Trebuchet MS"),
+    (re.compile(r"\bbook\s+antiqua\b", re.I), "Book Antiqua"),
+    (re.compile(r"\bcourier\s+new\b", re.I), "Courier New"),
+    (re.compile(r"\bhelvetica\b", re.I), "Helvetica"),
 ]
 
 
@@ -68,6 +85,361 @@ def is_instruction_or_rule_paragraph(text: str) -> bool:
     if not clean or len(clean) > 450:
         return False
     return any(pattern.search(clean) for pattern in INSTRUCTION_PATTERNS)
+
+
+def _detect_font_in_text(text: str) -> str | None:
+    for pat, canonical in KNOWN_FONT_PATTERNS:
+        if pat.search(text):
+            return canonical
+    font_match = re.search(
+        r"(?:font\s+(?:style|family|name)|typeface|font)\s*[:\-]\s*([A-Za-z][A-Za-z\s]{1,30}?)(?:\s*\(|\s*,|\s*;|\s+font|\s+size|\s+spacing|\n|$)",
+        text,
+        re.I,
+    )
+    if font_match:
+        cand = font_match.group(1).strip()
+        if 2 <= len(cand) <= 32 and cand.lower() not in {"size", "style", "color", "must", "should"}:
+            return cand
+    return None
+
+
+def _detect_alignment_in_text(text: str) -> str | None:
+    low = text.lower()
+    if re.search(r"\bjustif(?:y|ied)\b|\bboth\b(?=\s+align)", low):
+        return "justify"
+    if re.search(r"\bcent(?:er|re|ered|red)\b", low):
+        return "center"
+    if re.search(r"\bright[\s\-]+align(?:ed)?\b|\balign\s*[:\-]\s*right\b", low):
+        return "right"
+    if re.search(r"\bleft[\s\-]+align(?:ed)?\b|\balign\s*[:\-]\s*left\b", low):
+        return "left"
+    return None
+
+
+def _detect_line_spacing_in_text(text: str) -> float | None:
+    low = text.lower()
+    if re.search(r"\bdouble[\s\-]*(?:line\s*)?spac(?:ed|ing)\b", low):
+        return 2.0
+    if re.search(r"\bsingle[\s\-]*(?:line\s*)?spac(?:ed|ing)\b", low):
+        return 1.0
+    m = re.search(
+        r"(?:line\s+spacing|spacing)\s*(?:should\s+be|must\s+be|of|is|=|:|-)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:x|lines?)?",
+        low,
+    )
+    if m:
+        try:
+            val = float(m.group(1))
+            if 1.0 <= val <= 3.0:
+                return val
+        except ValueError:
+            pass
+    m2 = re.search(r"\b(1\.0|1\.15|1\.25|1\.5|2\.0)\s*(?:line\s*spacing|spacing)\b", low)
+    if m2:
+        return float(m2.group(1))
+    return None
+
+
+def _to_inches(value: float, unit: str | None) -> float:
+    u = (unit or "in").lower()
+    if u.startswith("cm"):
+        return round(value / 2.54, 3)
+    if u.startswith("mm"):
+        return round(value / 25.4, 3)
+    if u.startswith("pt"):
+        return round(value / 72.0, 3)
+    return round(value, 3)
+
+
+def parse_document_rules_from_lines(
+    lines: list[str],
+    *,
+    default_font: str = "Times New Roman",
+    is_institutional: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any], list[str], bool]:
+    """
+    Parse explicit formatting and structural rules written inside document instructions.
+    Returns: (typography_rules, structural_rules, rule_categories, has_explicit_overrides).
+    """
+    rule_lines = [line.strip() for line in lines if line and is_instruction_or_rule_paragraph(line)]
+    full_rule_text = "\n".join(rule_lines)
+    has_explicit_rules = len(rule_lines) > 0
+
+    base_ls = 1.5 if is_institutional else 1.15
+    base_body_align = "justify" if is_institutional else "left"
+    base_h1_align = "center" if is_institutional else "left"
+    base_h1_case = (
+        "uppercase"
+        if (
+            re.search(r"case\s*:\s*uppercase|all\s+caps|capital", full_rule_text, re.I)
+            or (is_institutional and any(re.search(r"CHAPTER\s*1|1\.\s*INTRODUCTION", l) for l in lines))
+        )
+        else "normal"
+    )
+
+    typography_rules: dict[str, Any] = {
+        "heading1": {
+            "font_name": default_font,
+            "size_pt": 14.0 if is_institutional else 16.0,
+            "bold": True,
+            "italic": False,
+            "line_spacing": base_ls,
+            "spacing_before_pt": 12.0,
+            "spacing_after_pt": 6.0,
+            "alignment": base_h1_align,
+            "case": base_h1_case,
+        },
+        "heading2": {
+            "font_name": default_font,
+            "size_pt": 12.0 if is_institutional else 13.0,
+            "bold": True,
+            "italic": False,
+            "line_spacing": base_ls,
+            "spacing_before_pt": 6.0,
+            "spacing_after_pt": 6.0,
+            "alignment": "left",
+            "case": "titlecase" if is_institutional else "normal",
+        },
+        "heading3": {
+            "font_name": default_font,
+            "size_pt": 12.0,
+            "bold": True,
+            "italic": False,
+            "line_spacing": base_ls,
+            "spacing_before_pt": 6.0,
+            "spacing_after_pt": 4.0,
+            "alignment": "left",
+            "case": "normal",
+        },
+        "body": {
+            "font_name": default_font,
+            "size_pt": 12.0 if is_institutional else 11.0,
+            "bold": False,
+            "italic": False,
+            "line_spacing": base_ls,
+            "spacing_before_pt": 0.0,
+            "spacing_after_pt": 6.0,
+            "alignment": base_body_align,
+            "case": "sentence",
+        },
+        "caption": {
+            "font_name": default_font,
+            "size_pt": 11.0 if is_institutional else 10.0,
+            "bold": False,
+            "italic": True,
+            "line_spacing": base_ls,
+            "spacing_before_pt": 6.0,
+            "spacing_after_pt": 6.0,
+            "alignment": "center",
+            "case": "sentence",
+        },
+    }
+
+    structural_rules: dict[str, Any] = {}
+    categories: list[str] = []
+    explicit_font_found = False
+
+    # Parse global font first if mentioned on a general font rule
+    for line in rule_lines:
+        low = line.lower()
+        is_role_specific = any(
+            k in low for k in ("heading", "chapter", "title", "sub", "caption", "figure", "table", "body", "content", "paragraph")
+        )
+        font = _detect_font_in_text(line)
+        if font and not is_role_specific:
+            explicit_font_found = True
+            for role in typography_rules:
+                typography_rules[role]["font_name"] = font
+            if "Typography" not in categories:
+                categories.append("Typography")
+
+    for line in rule_lines:
+        low = line.lower()
+        roles_targeted: list[str] = []
+        if any(k in low for k in ("sub heading", "subheading", "heading 2", "h2", "sub-heading")):
+            roles_targeted.append("heading2")
+        elif any(k in low for k in ("heading 3", "h3")):
+            roles_targeted.append("heading3")
+        elif any(k in low for k in ("heading", "chapter", "title")):
+            roles_targeted.append("heading1")
+        if any(k in low for k in ("caption", "figure", "table caption")):
+            roles_targeted.append("caption")
+        if any(k in low for k in ("body", "content", "paragraph", "prose", "text", "abstract")):
+            roles_targeted.append("body")
+        if not roles_targeted:
+            # General formatting rule applies font/spacing broadly
+            roles_targeted = ["heading1", "heading2", "heading3", "body", "caption"]
+
+        font = _detect_font_in_text(line)
+        if font:
+            explicit_font_found = True
+            for role in roles_targeted:
+                typography_rules[role]["font_name"] = font
+            if "Typography" not in categories:
+                categories.append("Typography")
+
+        # Font sizes and alignments per comma/semicolon clause (avoids assigning body pt to headings in mixed sentences)
+        for clause in [c.strip() for c in re.split(r"[,;]+", low) if c.strip()]:
+            c_roles: list[str] = []
+            c_h2 = any(k in clause for k in ("sub heading", "subheading", "heading 2", "h2", "sub-heading"))
+            c_h3 = any(k in clause for k in ("heading 3", "h3"))
+            c_h1 = not c_h2 and not c_h3 and any(k in clause for k in ("heading", "chapter", "title"))
+            c_cap = any(k in clause for k in ("caption", "figure", "table caption"))
+            c_body = any(k in clause for k in ("body", "content", "paragraph", "prose", "text", "abstract"))
+
+            if c_h2:
+                c_roles.append("heading2")
+            elif c_h3:
+                c_roles.append("heading3")
+            elif c_h1 and c_body:
+                pt_m = re.search(r"\d+(?:\.\d+)?\s*pt\b", clause)
+                b_m = re.search(r"\b(?:body|content|paragraph|prose|text|abstract)\b", clause)
+                h_m = re.search(r"\b(?:heading|chapter|title)\b", clause)
+                if pt_m and b_m and h_m:
+                    c_roles.append("body" if abs(pt_m.start() - b_m.start()) <= abs(pt_m.start() - h_m.start()) else "heading1")
+                elif b_m and h_m and b_m.start() <= h_m.start():
+                    c_roles.append("body")
+                else:
+                    c_roles.append("heading1")
+            elif c_h1:
+                c_roles.append("heading1")
+            if c_cap and not c_h1 and not c_body:
+                c_roles.append("caption")
+            if c_body and "body" not in c_roles and not c_h1:
+                c_roles.append("body")
+
+            pt_matches = [float(m.group(1)) for m in re.finditer(r"(\d+(?:\.\d+)?)\s*pt\b", clause)]
+            if not pt_matches:
+                sz_m = re.search(
+                    r"(?:for\s+all\s+content\s+font\s+size|font\s+size|size)\s*[:\-–]*\s*(\d{1,2}(?:\.\d+)?)\b",
+                    clause,
+                )
+                if sz_m:
+                    pt_matches = [float(sz_m.group(1))]
+            if pt_matches:
+                sz = pt_matches[0]
+                if 8.0 <= sz <= 48.0:
+                    target_roles = c_roles if c_roles else (roles_targeted if len(roles_targeted) < 5 else ["body"])
+                    for role in target_roles:
+                        if role in typography_rules:
+                            typography_rules[role]["size_pt"] = sz
+                    if "Font Size" not in categories:
+                        categories.append("Font Size")
+
+            align = _detect_alignment_in_text(clause)
+            if align:
+                target_roles = c_roles if c_roles else (roles_targeted if len(roles_targeted) < 5 else ["body"])
+                for role in target_roles:
+                    if role in typography_rules:
+                        typography_rules[role]["alignment"] = align
+                if "Alignment" not in categories:
+                    categories.append("Alignment")
+
+        ls = _detect_line_spacing_in_text(line)
+        if ls is not None:
+            for role in roles_targeted:
+                if role in typography_rules:
+                    typography_rules[role]["line_spacing"] = ls
+            if "Line Spacing" not in categories:
+                categories.append("Line Spacing")
+
+        if "heading1" in roles_targeted:
+            if re.search(r"\b(?:uppercase|upper\s*case|all\s*caps|capital(?:s|ized)?)\b", low):
+                typography_rules["heading1"]["case"] = "uppercase"
+            elif re.search(r"\btitle\s*case\b", low):
+                typography_rules["heading1"]["case"] = "titlecase"
+            elif re.search(r"\bsentence\s*case|normal\s*case\b", low):
+                typography_rules["heading1"]["case"] = "normal"
+
+        if "bold" in low and "not bold" not in low:
+            for role in roles_targeted:
+                if role != "body" or "body" in low or "all" in low:
+                    typography_rules[role]["bold"] = True
+
+        # Margins
+        side_margins: dict[str, float] = {}
+        for side in ("top", "bottom", "left", "right"):
+            sm = re.search(
+                rf"\b{side}\s*(?:margin)?\s*[:=\-]?\s*(\d+(?:\.\d+)?)\s*(inches?|in|\"|cm|mm|pt)?\b",
+                low,
+            )
+            if sm and ("margin" in low or sm.group(2)):
+                val = _to_inches(float(sm.group(1)), sm.group(2))
+                if 0.25 <= val <= 3.0:
+                    side_margins[side] = val
+        if side_margins:
+            margins_obj = structural_rules.setdefault("margins_in", {})
+            margins_obj.update(side_margins)
+            if "Margins" not in categories:
+                categories.append("Margins")
+        elif "margin" in low:
+            gm = re.search(
+                r"margins?\s*(?:of|should\s+be|must\s+be|:|-)?\s*(\d+(?:\.\d+)?)\s*(inches?|in|\"|cm|mm|pt)?",
+                low,
+            )
+            if gm:
+                val = _to_inches(float(gm.group(1)), gm.group(2))
+                if 0.25 <= val <= 3.0:
+                    structural_rules["margins_in"] = {
+                        "top": val,
+                        "bottom": val,
+                        "left": val,
+                        "right": val,
+                    }
+                    if "Margins" not in categories:
+                        categories.append("Margins")
+
+        # Paper size
+        if re.search(r"\ba4\b", low):
+            structural_rules["page_size"] = "A4"
+            if "Page Size" not in categories:
+                categories.append("Page Size")
+        elif re.search(r"\blegal\b", low):
+            structural_rules["page_size"] = "Legal"
+            if "Page Size" not in categories:
+                categories.append("Page Size")
+        elif re.search(r"\bletter\b", low) and ("size" in low or "paper" in low or "page" in low):
+            structural_rules["page_size"] = "Letter"
+            if "Page Size" not in categories:
+                categories.append("Page Size")
+
+        # Citations / tables / sections
+        if re.search(r"\bieee\b", low):
+            structural_rules["citation_style"] = "IEEE"
+            if "Citations" not in categories:
+                categories.append("Citations")
+        elif re.search(r"\bapa\b", low):
+            structural_rules["citation_style"] = "APA"
+            if "Citations" not in categories:
+                categories.append("Citations")
+        elif re.search(r"bracketed\s+numeric|\[\d+\]", low):
+            structural_rules["citation_style"] = "numeric"
+            if "Citations" not in categories:
+                categories.append("Citations")
+
+        if "table" in low:
+            structural_rules["require_tables"] = True
+
+        req_sec_m = re.search(
+            r"(?:required\s+sections?|must\s+include\s+(?:sections?|chapters?)|chapters?)\s*[:\-]\s*(.+)$",
+            line,
+            re.I,
+        )
+        if req_sec_m:
+            raw_items = [
+                item.strip(" .;:")
+                for item in re.split(r"[,;|]", req_sec_m.group(1))
+                if 2 <= len(item.strip(" .;:")) <= 80
+            ]
+            if raw_items:
+                structural_rules["required_sections"] = raw_items
+                if "Structure" not in categories:
+                    categories.append("Structure")
+
+    if not explicit_font_found and default_font:
+        for role in typography_rules:
+            typography_rules[role]["font_name"] = default_font
+
+    return typography_rules, structural_rules, categories, has_explicit_rules
 
 
 class DocxAnalyzer:
@@ -117,9 +489,14 @@ class DocxAnalyzer:
 
         # 8. Extract Rules, Guidelines, and Outline from Document Content
         extracted_rules, document_outline, doc_summary = self._extract_rules_and_outline(doc)
-        is_inst, typography_rules, body_anchor_idx = self._analyze_institutional_template(
-            doc, extracted_rules
-        )
+        (
+            is_inst,
+            typography_rules,
+            body_anchor_idx,
+            has_embedded_rules,
+            detected_categories,
+            structural_rules,
+        ) = self._analyze_institutional_template(doc, extracted_rules)
 
         return TemplateSpecification(
             filename=filename,
@@ -144,19 +521,22 @@ class DocxAnalyzer:
             is_institutional_template=is_inst,
             body_anchor_index=body_anchor_idx,
             parsed_typography_rules=typography_rules,
+            has_embedded_rules=has_embedded_rules,
+            detected_rule_categories=detected_categories,
+            parsed_structural_rules=structural_rules,
         )
 
     def _extract_rules_and_outline(self, doc: DocumentObject):
         """
-        Scans the document for internal formatting guidelines, submission rules,
-        style requirements, and existing chapter headings/outline.
+        Scans the document (paragraphs, tables, and textboxes) for internal formatting guidelines,
+        submission rules, style requirements, and existing chapter headings/outline.
         """
         rule_anchor_re = re.compile(
-            r"^\s*(rule|note|guideline|requirement|instruction|format|font|margin|spacing|style)s?(\s+\w+)?\s*[:\-–]",
+            r"^\s*(rule|note|guideline|requirement|instruction|format|font|margin|margins|spacing|style|paper\s*size|page\s*size)s?(\s+\w+)?\s*[:\-–]",
             re.IGNORECASE,
         )
         must_format_re = re.compile(
-            r"\b(must|shall|should)\b.*\b(format|font|margin|spacing|size|heading|style|table|figure|page|color|border|citation|ieee)\b",
+            r"\b(must|shall|should)\b.*\b(format|font|margin|margins|spacing|size|heading|style|table|figure|page|color|border|citation|ieee|apa|justified|centered|uppercase)\b",
             re.IGNORECASE,
         )
 
@@ -165,17 +545,25 @@ class DocxAnalyzer:
         seen_rules: set[str] = set()
         summary_paragraphs: list[str] = []
 
-        for p in doc.paragraphs:
-            text = p.text.strip()
-            if not text:
-                continue
-
-            # Detect rule / guideline paragraphs
+        def collect_rule(text: str) -> bool:
             is_rule = bool(
                 rule_anchor_re.search(text)
                 or must_format_re.search(text)
                 or is_instruction_or_rule_paragraph(text)
             )
+            if is_rule and 8 < len(text) <= 350 and len(extracted_rules) < 12:
+                clean_text = " ".join(text.split())
+                if clean_text not in seen_rules:
+                    seen_rules.add(clean_text)
+                    extracted_rules.append(clean_text)
+            return is_rule
+
+        for p in doc.paragraphs:
+            text = p.text.strip()
+            if not text:
+                continue
+
+            is_rule = collect_rule(text)
 
             # Detect headings / outline (excluding TOC styles and instruction lines)
             style_name = (p.style.name if p.style else "").strip().lower()
@@ -186,40 +574,49 @@ class DocxAnalyzer:
             if is_heading and len(text) < 120 and not is_rule:
                 document_outline.append(text)
 
-            if is_rule and 8 < len(text) <= 300 and len(extracted_rules) < 12:
-                clean_text = " ".join(text.split())
-                if clean_text not in seen_rules:
-                    seen_rules.add(clean_text)
-                    extracted_rules.append(clean_text)
-
             if len(summary_paragraphs) < 15 and len(text) > 30 and not is_rule:
                 summary_paragraphs.append(text[:150])
+
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for line in cell.text.splitlines():
+                        clean = line.strip()
+                        if clean:
+                            collect_rule(clean)
+
+        for node in doc._body._body.xpath(".//w:txbxContent"):
+            for p_elem in node.xpath(".//w:p"):
+                txt = "".join(p_elem.xpath(".//w:t/text()")).strip()
+                if txt:
+                    collect_rule(txt)
 
         doc_summary = " | ".join(summary_paragraphs[:8])
         return extracted_rules, document_outline, doc_summary
 
     def _analyze_institutional_template(
         self, doc: DocumentObject, extracted_rules: list[str]
-    ) -> tuple[bool, dict[str, Any], int | None]:
+    ) -> tuple[bool, dict[str, Any], int | None, bool, list[str], dict[str, Any]]:
         """
         Detects institutional / academic report formats (seminar reports, theses, project proposals)
-        that have structured front matter (Cover, Certificate, Acknowledgement, Abstract, TOC) and
-        explicit typographic guidelines, identifying the body anchor where real chapters begin.
-        Also parses explicit inline typography rules for any template that specifies them.
+        AND parses explicit written rules (typography, alignments, margins, page size, structure)
+        for ANY document that contains written instructions.
         """
         full_text_paras = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
         table_texts = [
-            cell.text.strip()
+            line.strip()
             for tbl in doc.tables
             for row in tbl.rows
             for cell in row.cells
-            if cell.text.strip()
+            for line in cell.text.splitlines()
+            if line.strip()
         ]
         txbx_texts = [
             " ".join(t.strip() for t in node.itertext() if t.strip())
             for node in doc._body._body.xpath(".//w:txbxContent")
         ]
-        full_text = "\n".join([*full_text_paras, *table_texts, *txbx_texts])
+        all_lines = [*full_text_paras, *table_texts, *txbx_texts, *extracted_rules]
+        full_text = "\n".join(all_lines)
         upper_text = full_text.upper()
 
         front_matter_keywords = [
@@ -248,127 +645,32 @@ class DocxAnalyzer:
             or "ACKNOWLEDGEMENT" in upper_text
             or "CERTIFICATE" in upper_text
         )
-        has_guidelines = bool(
-            re.search(r"font\s+style\s*:", full_text, re.I)
-            or re.search(r"font\s+size\s*:", full_text, re.I)
-            or re.search(r"line\s+spacing\s*:", full_text, re.I)
-            or re.search(r"formatting\s+tips\s*:", full_text, re.I)
-            or re.search(r"note:\s*chapter\s*1", full_text, re.I)
-            or re.search(r"times\s+new\s+roman", full_text, re.I)
-        )
 
         is_institutional = (matched_front_kw >= 2) or (
-            matched_front_kw >= 1 and (has_prelim_sections or has_guidelines or len(doc.sections) > 1)
+            matched_front_kw >= 1 and (has_prelim_sections or len(doc.sections) > 1)
         )
 
-        typography_rules: dict[str, Any] = {}
-        if is_institutional or has_guidelines or extracted_rules:
-            h1_case = (
-                "uppercase"
-                if (
-                    re.search(r"case\s*:\s*uppercase", full_text, re.I)
-                    or re.search(r"CHAPTER\s*1|1\.\s*INTRODUCTION", full_text)
-                )
-                else "normal"
-            )
-            default_font = "Times New Roman" if is_institutional or "times new roman" in full_text.lower() else (
-                doc.styles["Normal"].font.name or "Times New Roman"
-            )
-            typography_rules = {
-                "heading1": {
-                    "font_name": default_font,
-                    "size_pt": 14.0,
-                    "bold": True,
-                    "line_spacing": 1.5 if is_institutional else 1.15,
-                    "spacing_before_pt": 12.0,
-                    "spacing_after_pt": 6.0,
-                    "alignment": "center" if is_institutional else "left",
-                    "case": h1_case,
-                },
-                "heading2": {
-                    "font_name": default_font,
-                    "size_pt": 12.0,
-                    "bold": True,
-                    "line_spacing": 1.5 if is_institutional else 1.15,
-                    "spacing_before_pt": 6.0,
-                    "spacing_after_pt": 6.0,
-                    "alignment": "left",
-                    "case": "titlecase",
-                },
-                "heading3": {
-                    "font_name": default_font,
-                    "size_pt": 12.0,
-                    "bold": True,
-                    "line_spacing": 1.5 if is_institutional else 1.15,
-                    "spacing_before_pt": 6.0,
-                    "spacing_after_pt": 6.0,
-                    "alignment": "left",
-                    "case": "titlecase",
-                },
-                "body": {
-                    "font_name": default_font,
-                    "size_pt": 12.0,
-                    "bold": False,
-                    "line_spacing": 1.5 if is_institutional else 1.15,
-                    "spacing_before_pt": 0.0,
-                    "spacing_after_pt": 6.0,
-                    "alignment": "justify" if is_institutional else "left",
-                    "case": "sentence",
-                },
-                "caption": {
-                    "font_name": default_font,
-                    "size_pt": 11.0,
-                    "bold": False,
-                    "line_spacing": 1.5 if is_institutional else 1.15,
-                    "spacing_before_pt": 6.0,
-                    "spacing_after_pt": 6.0,
-                    "alignment": "center",
-                    "case": "sentence",
-                },
-            }
+        normal_font = doc.styles["Normal"].font.name if "Normal" in doc.styles else None
+        default_font = "Times New Roman" if is_institutional else (normal_font or "Calibri")
 
-            font_match = re.search(
-                r"(?:font\s+style|font\s+family|font)\s*[:\-]\s*([A-Za-z\s]+?)(?:\s*\(|\s*,|\s+font|\s+size|\s+spacing|\n|$)",
-                full_text,
-                re.I,
+        typography_rules, structural_rules, rule_categories, has_explicit_rules = (
+            parse_document_rules_from_lines(
+                all_lines,
+                default_font=default_font,
+                is_institutional=is_institutional,
             )
-            if font_match:
-                detected_font = font_match.group(1).strip()
-                if "times" in detected_font.lower():
-                    detected_font = "Times New Roman"
-                elif "arial" in detected_font.lower():
-                    detected_font = "Arial"
-                elif "calibri" in detected_font.lower():
-                    detected_font = "Calibri"
-                if 2 <= len(detected_font) <= 32:
-                    for k in typography_rules:
-                        typography_rules[k]["font_name"] = detected_font
-
-            ls_match = re.search(r"(?:line\s+spacing|spacing)\s*[:\-]\s*([0-9.]+)\s*(?:lines?)?", full_text, re.I)
-            if ls_match:
-                try:
-                    ls_val = float(ls_match.group(1))
-                    if 1.0 <= ls_val <= 3.0:
-                        for k in typography_rules:
-                            typography_rules[k]["line_spacing"] = ls_val
-                except ValueError:
-                    pass
-
-            body_sz_match = re.search(
-                r"(?:for\s+all\s+content\s+font\s+size|body\s+font\s+size|content\s+size)\s*[:\-]*\s*(\d{2})",
-                full_text,
-                re.I,
-            )
-            if body_sz_match:
-                try:
-                    b_sz = float(body_sz_match.group(1))
-                    if 9.0 <= b_sz <= 16.0:
-                        typography_rules["body"]["size_pt"] = b_sz
-                except ValueError:
-                    pass
+        )
+        has_embedded_rules = has_explicit_rules or len(extracted_rules) > 0
 
         if not is_institutional:
-            return False, typography_rules if has_guidelines else {}, None
+            return (
+                False,
+                typography_rules if has_embedded_rules else {},
+                None,
+                has_embedded_rules,
+                rule_categories,
+                structural_rules if has_embedded_rules else {},
+            )
 
         # Locate preliminary front-matter end so we don't mistake a TOC entry for the Chapter 1 body anchor
         last_prelim_idx = -1
@@ -430,7 +732,14 @@ class DocxAnalyzer:
                     body_anchor_idx = min(i + 1, len(doc.paragraphs) - 1)
                     break
 
-        return is_institutional, typography_rules, body_anchor_idx
+        return (
+            is_institutional,
+            typography_rules,
+            body_anchor_idx,
+            has_embedded_rules,
+            rule_categories,
+            structural_rules,
+        )
 
     def _extract_page_spec(self, doc: DocumentObject) -> PageSpec:
         if not doc.sections:

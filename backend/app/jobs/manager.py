@@ -402,6 +402,8 @@ class JobManager:
                     image_mode=req.image_mode,
                     research_enabled=req.research_enabled,
                     on_progress=report_planning_progress,
+                    rule_mode=req.rule_mode,
+                    custom_rules=req.custom_rules,
                 )
 
         elif spec.document_type == "pptx":
@@ -427,6 +429,8 @@ class JobManager:
                 image_mode=req.image_mode,
                 research_enabled=req.research_enabled,
                 on_progress=report_planning_progress,
+                rule_mode=req.rule_mode,
+                custom_rules=req.custom_rules,
             )
         else:
             raise HTTPException(
@@ -488,6 +492,9 @@ class JobManager:
                     target_heading=req.edit_target_heading,
                     target_index=req.edit_target_index,
                     warnings=job.warnings,
+                    rule_mode=req.rule_mode,
+                    custom_rules=req.custom_rules,
+                    enabled_rule_indices=req.enabled_rule_indices,
                 )
             )
         elif spec.document_type == "pptx":
@@ -511,7 +518,15 @@ class JobManager:
                 doc = builder.build_docx_base(spec, output_path)
                 locked_doc = LockedTemplate(doc, str(output_path), spec)
                 de = DocxEngine()
-                de.generate_from_plan(locked_doc, plan, str(output_path), warnings=job.warnings)
+                de.generate_from_plan(
+                    locked_doc,
+                    plan,
+                    str(output_path),
+                    warnings=job.warnings,
+                    rule_mode=req.rule_mode,
+                    custom_rules=req.custom_rules,
+                    enabled_rule_indices=req.enabled_rule_indices,
+                )
 
             await anyio.to_thread.run_sync(render_pdf_base)
 
@@ -524,6 +539,30 @@ class JobManager:
 
         if spec.document_type in ("docx", "pptx"):
             intentional_overrides = [ov.target for ov in req.overrides]
+            if spec.document_type == "docx":
+                has_doc_rules = req.rule_mode == "document" and bool(
+                    getattr(spec, "has_embedded_rules", False)
+                    or getattr(spec, "is_institutional_template", False)
+                )
+                has_custom_rules = req.rule_mode == "custom" and req.custom_rules is not None
+                if has_doc_rules or has_custom_rules:
+                    if "styles" not in intentional_overrides:
+                        intentional_overrides.append("styles")
+                    struct_rules = getattr(spec, "parsed_structural_rules", {}) or {}
+                    needs_page_override = (
+                        has_doc_rules
+                        and bool(struct_rules.get("margins_in") or struct_rules.get("page_size"))
+                    ) or (
+                        has_custom_rules
+                        and req.custom_rules is not None
+                        and (
+                            req.custom_rules.margin_inches is not None
+                            or req.custom_rules.page_size is not None
+                        )
+                    )
+                    if needs_page_override and "page_setup" not in intentional_overrides:
+                        intentional_overrides.append("page_setup")
+
             val_report = await anyio.to_thread.run_sync(
                 lambda: self.validator.validate(
                     spec,

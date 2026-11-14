@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan to fix seminar/institutional report generation in-place, enforce and strip embedded template formatting rules, add optional Author/Guide/Department metadata inputs with prompt fallback, and resolve the raw long_sentence_split_at_word_boundary warning.",
-  "updatedAt":  "2026-11-10T09:16:27.124938376Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

@@ -114,6 +114,45 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
   if (spec.table_rules) {
     detectedItems.push({ name: "Tables found", detail: String(spec.table_rules.length) });
   }
+  if (spec.has_embedded_rules && spec.parsed_typography_rules) {
+    const typo = spec.parsed_typography_rules as Record<string, unknown>;
+    const body = typo.body as Record<string, unknown> | undefined;
+    const h1 = typo.heading1 as Record<string, unknown> | undefined;
+    const fontFamily =
+      (typeof typo.font_family === "string" ? typo.font_family : null) ||
+      (typeof h1?.font_name === "string" ? h1.font_name : null) ||
+      (typeof body?.font_name === "string" ? body.font_name : null);
+    const h1Size =
+      typeof h1?.size_pt === "number"
+        ? h1.size_pt
+        : typeof typo.heading1_size_pt === "number"
+        ? typo.heading1_size_pt
+        : null;
+    const bodySize =
+      typeof body?.size_pt === "number"
+        ? body.size_pt
+        : typeof typo.body_size_pt === "number"
+        ? typo.body_size_pt
+        : null;
+    const lineSpacing =
+      typeof body?.line_spacing === "number"
+        ? body.line_spacing
+        : typeof typo.line_spacing === "number"
+        ? typo.line_spacing
+        : null;
+    const summaryParts = [
+      fontFamily,
+      h1Size !== null ? `H1 ${h1Size}pt` : null,
+      bodySize !== null ? `Body ${bodySize}pt` : null,
+      lineSpacing !== null ? `${lineSpacing}x spacing` : null,
+    ].filter(Boolean);
+    if (summaryParts.length > 0) {
+      detectedItems.push({
+        name: "Document rule spec",
+        detail: summaryParts.join(" · "),
+      });
+    }
+  }
 
   const handleCopyHash = () => {
     if (!spec.style_hash || typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -147,6 +186,11 @@ export function TemplateLockDisplay({ spec, onReset }: TemplateLockDisplayProps)
                 <ShieldCheck className="h-3 w-3 text-emerald-600" />
                 Template Locked
               </span>
+              {spec.has_embedded_rules && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-300 px-2.5 py-0.5 text-[10px] font-bold text-sky-800">
+                  Embedded Rules Detected
+                </span>
+              )}
               <span className="rounded bg-sky-100/90 border border-sky-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-800">
                 {spec.document_type}
               </span>

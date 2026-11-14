@@ -217,3 +217,6 @@ class TemplateSpecification(BaseModel):
     is_institutional_template: bool = False
     body_anchor_index: int | None = None
     parsed_typography_rules: dict[str, Any] = Field(default_factory=dict)
+    has_embedded_rules: bool = False
+    detected_rule_categories: list[str] = Field(default_factory=list)
+    parsed_structural_rules: dict[str, Any] = Field(default_factory=dict)

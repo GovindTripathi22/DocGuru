@@ -339,6 +339,10 @@ export default function Home() {
                 documentOutline={
                   templateData.document_outline || templateData.template_spec?.document_outline
                 }
+                hasEmbeddedRules={templateData.template_spec?.has_embedded_rules}
+                detectedRuleCategories={templateData.template_spec?.detected_rule_categories}
+                parsedTypographyRules={templateData.template_spec?.parsed_typography_rules}
+                parsedStructuralRules={templateData.template_spec?.parsed_structural_rules}
               />
             )}
           </div>

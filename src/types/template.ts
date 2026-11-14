@@ -59,6 +59,9 @@ export interface TemplateSpec {
   is_institutional_template?: boolean;
   body_anchor_index?: number | null;
   parsed_typography_rules?: Record<string, unknown>;
+  has_embedded_rules?: boolean;
+  detected_rule_categories?: string[];
+  parsed_structural_rules?: Record<string, unknown>;
 }
 
 export interface ValidationReport {
@@ -93,10 +96,27 @@ export interface GenerationPlan {
   sections?: SectionPlan[];
 }
 
+export type RuleMode = "document" | "custom";
+
+export interface CustomRulePreferences {
+  font_name?: string;
+  heading1_size_pt?: number;
+  heading2_size_pt?: number;
+  body_size_pt?: number;
+  line_spacing?: number;
+  body_alignment?: "left" | "center" | "right" | "justify";
+  heading1_alignment?: "left" | "center" | "right" | "justify";
+  heading1_case?: "uppercase" | "titlecase" | "normal";
+  margin_inches?: number;
+  page_size?: "A4" | "Letter" | "Legal";
+}
+
 export interface PromptData {
   prompt: string;
   mode: GenerationMode;
   templateMode?: "auto" | "fill" | "append";
+  ruleMode?: RuleMode;
+  customRules?: CustomRulePreferences;
   editAction?: "append" | "insert_after";
   editTargetIndex?: number;
   override?: { target: "table_border" | "page_border" | "heading_color"; value: string };

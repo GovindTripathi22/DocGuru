@@ -15,10 +15,18 @@ from docx.shared import Inches, Pt, RGBColor
 from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
 
-from ..analyzer.docx_analyzer import is_instruction_or_rule_paragraph
+from ..analyzer.docx_analyzer import (
+    is_instruction_or_rule_paragraph,
+    parse_document_rules_from_lines,
+)
 from ..config import settings
 from ..errors import AppError
-from ..models.generation import DocumentPlan, DocumentSection, ThemeOverrideRequest
+from ..models.generation import (
+    CustomRulePreferences,
+    DocumentPlan,
+    DocumentSection,
+    ThemeOverrideRequest,
+)
 from ..models.template_spec import TemplateSpecification
 from .list_resolver import ListStyleResolver
 from .style_lock import LockedTemplate
@@ -72,6 +80,206 @@ class DocxEngine:
         return None
 
     @staticmethod
+    def _set_run_font_all_scripts(run: Any, font_name: str) -> None:
+        run.font.name = font_name
+        rpr = run._element.get_or_add_rPr()
+        rfonts = rpr.get_or_add_rFonts()
+        rfonts.set(qn("w:ascii"), font_name)
+        rfonts.set(qn("w:hAnsi"), font_name)
+        rfonts.set(qn("w:cs"), font_name)
+
+    @staticmethod
+    def _set_style_font_all_scripts(style: Any, font_name: str) -> None:
+        style.font.name = font_name
+        rpr = style._element.get_or_add_rPr()
+        rfonts = rpr.get_or_add_rFonts()
+        rfonts.set(qn("w:ascii"), font_name)
+        rfonts.set(qn("w:hAnsi"), font_name)
+        rfonts.set(qn("w:cs"), font_name)
+
+    @staticmethod
+    def resolve_effective_rules(
+        spec: TemplateSpecification,
+        rule_mode: str = "document",
+        custom_rules: CustomRulePreferences | None = None,
+        enabled_rule_indices: list[int] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any], bool]:
+        """
+        Compute effective (typography_rules, structural_rules, should_enforce)
+        respecting rule_mode ("document" vs "custom") and optional enabled_rule_indices.
+        """
+        default_font = (
+            (spec.fonts.body or spec.fonts.default)
+            if spec and spec.fonts
+            else None
+        ) or ("Times New Roman" if getattr(spec, "is_institutional_template", False) else "Calibri")
+
+        if rule_mode == "custom":
+            base_typo, base_struct, _, _ = parse_document_rules_from_lines(
+                [],
+                default_font=default_font,
+                is_institutional=bool(getattr(spec, "is_institutional_template", False)),
+            )
+            if custom_rules is None:
+                return base_typo, base_struct, False
+
+            font_name = custom_rules.font_name or default_font
+            for role in base_typo:
+                base_typo[role]["font_name"] = font_name
+            if custom_rules.heading1_size_pt is not None:
+                base_typo["heading1"]["size_pt"] = custom_rules.heading1_size_pt
+            if custom_rules.heading2_size_pt is not None:
+                base_typo["heading2"]["size_pt"] = custom_rules.heading2_size_pt
+            if custom_rules.body_size_pt is not None:
+                base_typo["body"]["size_pt"] = custom_rules.body_size_pt
+            if custom_rules.line_spacing is not None:
+                for role in base_typo:
+                    base_typo[role]["line_spacing"] = custom_rules.line_spacing
+            if custom_rules.body_alignment is not None:
+                base_typo["body"]["alignment"] = custom_rules.body_alignment
+            if custom_rules.heading1_alignment is not None:
+                base_typo["heading1"]["alignment"] = custom_rules.heading1_alignment
+            if custom_rules.heading1_case is not None:
+                base_typo["heading1"]["case"] = custom_rules.heading1_case
+
+            if custom_rules.margin_inches is not None:
+                m = float(custom_rules.margin_inches)
+                base_struct["margins_in"] = {"top": m, "bottom": m, "left": m, "right": m}
+            if custom_rules.page_size is not None:
+                base_struct["page_size"] = custom_rules.page_size
+            return base_typo, base_struct, True
+
+        # rule_mode == "document"
+        if enabled_rule_indices is not None and spec.extracted_rules:
+            selected = set(enabled_rule_indices)
+            selected_lines = [
+                r for idx, r in enumerate(spec.extracted_rules[:12]) if idx in selected
+            ]
+            typo, struct, _, has_explicit = parse_document_rules_from_lines(
+                selected_lines,
+                default_font=default_font,
+                is_institutional=bool(getattr(spec, "is_institutional_template", False)),
+            )
+            return typo, struct, bool(has_explicit or getattr(spec, "is_institutional_template", False))
+
+        typo = copy.deepcopy(getattr(spec, "parsed_typography_rules", None) or {})
+        struct = copy.deepcopy(getattr(spec, "parsed_structural_rules", None) or {})
+        should_enforce = bool(
+            getattr(spec, "has_embedded_rules", False)
+            or getattr(spec, "is_institutional_template", False)
+            or bool(typo)
+        )
+        return typo, struct, should_enforce
+
+    def _apply_rules_to_styles_and_page(
+        self,
+        doc: DocumentObject,
+        typography_rules: dict[str, Any],
+        structural_rules: dict[str, Any],
+    ) -> None:
+        role_style_map = {
+            "body": ["Normal"],
+            "heading1": ["Heading 1", "Title"],
+            "heading2": ["Heading 2"],
+            "heading3": ["Heading 3"],
+        }
+        for role, style_names in role_style_map.items():
+            rules = typography_rules.get(role)
+            if not rules:
+                continue
+            for style_name in style_names:
+                st = self._resolve_style(doc, style_name)
+                if st is None or not hasattr(st, "font"):
+                    continue
+                if rules.get("font_name"):
+                    self._set_style_font_all_scripts(st, rules["font_name"])
+                if rules.get("size_pt") is not None:
+                    size_val = float(rules["size_pt"])
+                    if style_name == "Title":
+                        size_val = max(size_val, float(rules["size_pt"]) + 2.0)
+                    st.font.size = Pt(size_val)
+                if rules.get("bold") is not None:
+                    st.font.bold = bool(rules["bold"])
+                if hasattr(st, "paragraph_format") and st.paragraph_format:
+                    if rules.get("line_spacing") is not None:
+                        st.paragraph_format.line_spacing = float(rules["line_spacing"])
+                    if rules.get("alignment"):
+                        align_lower = str(rules["alignment"]).lower()
+                        if "center" in align_lower:
+                            st.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        elif "justify" in align_lower:
+                            st.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                        elif "right" in align_lower:
+                            st.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                        elif "left" in align_lower:
+                            st.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        margins_in = structural_rules.get("margins_in")
+        if isinstance(margins_in, dict) and margins_in:
+            for sec in doc.sections:
+                if "top" in margins_in:
+                    sec.top_margin = Inches(float(margins_in["top"]))
+                if "bottom" in margins_in:
+                    sec.bottom_margin = Inches(float(margins_in["bottom"]))
+                if "left" in margins_in:
+                    sec.left_margin = Inches(float(margins_in["left"]))
+                if "right" in margins_in:
+                    sec.right_margin = Inches(float(margins_in["right"]))
+
+        page_size = structural_rules.get("page_size")
+        if page_size:
+            dims_map = {
+                "A4": (8.27, 11.69),
+                "Letter": (8.5, 11.0),
+                "Legal": (8.5, 14.0),
+            }
+            dims = dims_map.get(str(page_size))
+            if dims:
+                w_in, h_in = dims
+                for sec in doc.sections:
+                    sec.page_width = Inches(w_in)
+                    sec.page_height = Inches(h_in)
+
+    def _strip_all_instruction_paragraphs(self, doc: DocumentObject) -> None:
+        protected = {
+            "SEMINAR REPORT",
+            "PROJECT REPORT",
+            "CERTIFICATE",
+            "DECLARATION",
+            "ACKNOWLEDGEMENT",
+            "ACKNOWLEDGEMENTS",
+            "ABSTRACT",
+            "TABLE OF CONTENT",
+            "TABLE OF CONTENTS",
+            "INDEX",
+            "CONTENTS",
+        }
+        for p in list(doc.paragraphs):
+            txt = p.text.strip()
+            if not txt:
+                continue
+            if " ".join(txt.upper().split()) in protected:
+                continue
+            if is_instruction_or_rule_paragraph(txt):
+                self._strip_or_remove_instruction_paragraph(p)
+
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for p in list(cell.paragraphs):
+                        txt = p.text.strip()
+                        if txt and is_instruction_or_rule_paragraph(txt):
+                            self._strip_or_remove_instruction_paragraph(p)
+
+        for sec in doc.sections:
+            for container in (sec.header, sec.footer):
+                if container and not container.is_linked_to_previous:
+                    for p in list(container.paragraphs):
+                        txt = p.text.strip()
+                        if txt and is_instruction_or_rule_paragraph(txt):
+                            self._strip_or_remove_instruction_paragraph(p)
+
+    @staticmethod
     def _apply_typography_rules(
         paragraph: Paragraph,
         role: str,
@@ -87,20 +295,21 @@ class DocxEngine:
         font_name = rules.get("font_name")
         size_pt = rules.get("size_pt")
         bold = rules.get("bold")
+        italic = rules.get("italic")
         line_spacing = rules.get("line_spacing")
         space_before_pt = rules.get("spacing_before_pt")
         space_after_pt = rules.get("spacing_after_pt")
         alignment = rules.get("alignment")
 
         if line_spacing is not None:
-            paragraph.paragraph_format.line_spacing = line_spacing
+            paragraph.paragraph_format.line_spacing = float(line_spacing)
         if space_before_pt is not None:
-            paragraph.paragraph_format.space_before = Pt(space_before_pt)
+            paragraph.paragraph_format.space_before = Pt(float(space_before_pt))
         if space_after_pt is not None:
-            paragraph.paragraph_format.space_after = Pt(space_after_pt)
+            paragraph.paragraph_format.space_after = Pt(float(space_after_pt))
 
         if alignment:
-            align_lower = alignment.lower()
+            align_lower = str(alignment).lower()
             if "center" in align_lower:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             elif "justify" in align_lower:
@@ -112,11 +321,14 @@ class DocxEngine:
 
         for r in paragraph.runs:
             if font_name:
-                r.font.name = font_name
+                DocxEngine._set_run_font_all_scripts(r, str(font_name))
             if size_pt is not None:
-                r.font.size = Pt(size_pt)
+                r.font.size = Pt(float(size_pt))
             if bold is not None:
-                r.bold = bold
+                r.bold = bool(bold)
+            if italic is not None:
+                r.italic = bool(italic)
+
     def insert_heading(
         self,
         locked_doc: LockedTemplate,
@@ -139,9 +351,13 @@ class DocxEngine:
             elif "title" in req_lower:
                 role = "heading1"
 
-        spec_rules = getattr(locked_doc.spec, "parsed_typography_rules", {})
-        if role == "heading1" and spec_rules.get("heading1", {}).get("case") == "uppercase":
-            text = text.upper()
+        spec_rules = getattr(locked_doc.spec, "parsed_typography_rules", {}) or {}
+        if role == "heading1":
+            case_rule = spec_rules.get("heading1", {}).get("case")
+            if case_rule == "uppercase":
+                text = text.upper()
+            elif case_rule == "titlecase":
+                text = text.title()
 
         if validated_style:
             st = self._resolve_style(doc, validated_style)
@@ -610,6 +826,9 @@ class DocxEngine:
         edit_action: str | None = None,
         target_heading: str | None = None,
         target_index: int | None = None,
+        rule_mode: str = "document",
+        custom_rules: CustomRulePreferences | None = None,
+        enabled_rule_indices: list[int] | None = None,
     ) -> str:
         """
         Executes surgical outline-indexed content edits (DOCX-04).
@@ -618,6 +837,17 @@ class DocxEngine:
         doc = locked_doc.doc
         spec = locked_doc.spec
         outline = spec.document_outline if spec else []
+
+        eff_typo, eff_struct, should_enforce = self.resolve_effective_rules(
+            spec,
+            rule_mode=rule_mode,
+            custom_rules=custom_rules,
+            enabled_rule_indices=enabled_rule_indices,
+        )
+        if should_enforce:
+            spec.parsed_typography_rules = eff_typo
+            spec.parsed_structural_rules = eff_struct
+            self._apply_rules_to_styles_and_page(doc, eff_typo, eff_struct)
 
         if not edit_action and plan.sections:
             edit_action = getattr(plan.sections[0], "action", None)
@@ -737,22 +967,29 @@ class DocxEngine:
                                         break
                         if style_obj:
                             heading = next_p.insert_paragraph_before(s.title, style=style_obj)
+                            self._apply_typography_rules(heading, "heading1", locked_doc)
                             self._apply_multilingual_properties(heading, s.title, locked_doc)
                         else:
                             hp = next_p.insert_paragraph_before(s.title)
                             if hp.runs:
                                 hp.runs[0].bold = True
+                            self._apply_typography_rules(hp, "heading1", locked_doc)
                             self._apply_multilingual_properties(hp, s.title, locked_doc)
                     for p_text in s.paragraphs:
                         paragraph = next_p.insert_paragraph_before(p_text)
+                        self._apply_typography_rules(paragraph, "body", locked_doc)
                         self._apply_multilingual_properties(paragraph, p_text, locked_doc)
                     for b_text in s.bullets:
                         text = f"•  {b_text}"
                         paragraph = next_p.insert_paragraph_before(text)
+                        self._apply_typography_rules(paragraph, "body", locked_doc)
                         self._apply_multilingual_properties(paragraph, text, locked_doc)
             else:
                 for s in plan.sections:
                     self._render_section(locked_doc, s, saved_table_xmls)
+
+        if should_enforce or rule_mode == "document":
+            self._strip_all_instruction_paragraphs(doc)
 
         if plan.generation_mode == "demo":
             demo_note = "DEMO CONTENT — not AI generated. Treat this output as a scaffold and validate details before use."
@@ -1212,7 +1449,7 @@ class DocxEngine:
         for idx, section in enumerate(plan.sections, start=1):
             stitle = section.title.strip()
             if not stitle.upper().startswith("CHAPTER") and not re.match(r"^\d+\.", stitle):
-                formatted_title = f"CHAPTER {idx}: {stitle.upper()}"
+                formatted_title = f"Chapter {idx}: {stitle}"
             else:
                 formatted_title = stitle
 
@@ -1288,6 +1525,9 @@ class DocxEngine:
         target_heading: str | None = None,
         target_index: int | None = None,
         warnings: list[str] | None = None,
+        rule_mode: str = "document",
+        custom_rules: CustomRulePreferences | None = None,
+        enabled_rule_indices: list[int] | None = None,
     ) -> str:
         """
         Applies a DocumentPlan onto a locked template DOCX conforming to DOCX-01..09.
@@ -1302,7 +1542,22 @@ class DocxEngine:
                 edit_action=edit_action,
                 target_heading=target_heading,
                 target_index=target_index,
+                rule_mode=rule_mode,
+                custom_rules=custom_rules,
+                enabled_rule_indices=enabled_rule_indices,
             )
+
+        # 0. Resolve and enforce effective typography + page/margin rules
+        eff_typo, eff_struct, should_enforce = self.resolve_effective_rules(
+            locked_doc.spec,
+            rule_mode=rule_mode,
+            custom_rules=custom_rules,
+            enabled_rule_indices=enabled_rule_indices,
+        )
+        if should_enforce:
+            locked_doc.spec.parsed_typography_rules = eff_typo
+            locked_doc.spec.parsed_structural_rules = eff_struct
+            self._apply_rules_to_styles_and_page(doc, eff_typo, eff_struct)
 
         # 1. Fill placeholders if present
         mapping = {
@@ -1386,8 +1641,11 @@ class DocxEngine:
                 warnings=warnings,
                 source_numbers=source_numbers,
             )
+            self._strip_all_instruction_paragraphs(doc)
         elif template_mode == "fill":
-            # Fill mode: keep existing structure, placeholders already replaced
+            # Fill mode: strip embedded rule notes, keep existing structure, append generated sections
+            if should_enforce or rule_mode == "document":
+                self._strip_all_instruction_paragraphs(doc)
             saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
             for s in plan.sections:
                 self._render_section(
@@ -1398,7 +1656,9 @@ class DocxEngine:
                     source_numbers=source_numbers,
                 )
         elif template_mode == "append":
-            # Explicit append mode: keep existing body content, append new content before final sectPr
+            # Explicit append mode: strip embedded rule notes, keep existing body content, append new content
+            if should_enforce or rule_mode == "document":
+                self._strip_all_instruction_paragraphs(doc)
             saved_table_xmls = [copy.deepcopy(t._tbl) for t in doc.tables]
             for s in plan.sections:
                 self._render_section(
